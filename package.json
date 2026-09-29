@@ -1,26 +1,38 @@
 {
   "name": "spatial-desktop",
+  "productName": "Spatial Desktop",
+  "desktopName": "spatial-desktop.desktop",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "typecheck": "tsc",
-    "open": "bin/spatial-desktop"
+  "description": "Your Hyprland desktop, apps and Windows VM as panels in a deep-space neural interface, in WebXR",
+  "homepage": "https://cheesiq.github.io/spatial-desktop/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cheesiq/spatial-desktop.git"
   },
-  "keywords": [],
-  "author": "",
+  "author": "Cheesiq",
   "license": "ISC",
   "type": "module",
-  "dependencies": {
-    "@iwsdk/core": "^1.0.0-rc.2",
-    "@novnc/novnc": "1.7.0"
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && node scripts/build-server.mjs",
+    "typecheck": "tsc",
+    "start": "node dist-server/main.mjs",
+    "open": "bin/spatial-desktop",
+    "desktop": "npm run build && electron .",
+    "dist:desktop": "npm run build && electron-builder",
+    "dist:android": "npm run build && cap sync android && cd android && ./gradlew assembleRelease"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@iwsdk/core": "^1.0.0-rc.2",
     "@iwsdk/vite-plugin-dev": "^1.0.0-rc.2",
+    "@novnc/novnc": "1.7.0",
     "@types/ws": "^8.18.1",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "ws": "^8.22.0"

@@ -1,5 +1,6 @@
 import { VisibilityState, World } from '@iwsdk/core';
 import { captureWindow, streamSource } from './capture.js';
+import { detectCapabilities } from './capabilities.js';
 import { buildEnvironment } from './environment.js';
 import { connectHyprland, HYPRLAND_LABEL, searchOnPanel } from './hyprland.js';
 import {
@@ -24,6 +25,7 @@ import { connectVm } from './vm.js';
 import { EmulatorMouseSystem } from './xr-mouse.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const capabilitiesReady = detectCapabilities();
 
 World.create($('scene-container'), {
   xr: { offer: 'none' },
@@ -31,7 +33,12 @@ World.create($('scene-container'), {
   // Keep the mouse working after entering (emulated) VR, not just in 2D.
   input: { canvasPointerEvents: { enabled: true, activeDuringXR: true } },
   features: { grabbing: false, locomotion: false },
-}).then((world) => {
+}).then(async (world) => {
+  const can = await capabilitiesReady;
+  // Offer VR only where a session can start: a headset's browser, a PC VR
+  // runtime, or the dev server's emulator. Plain desktops and phones get none.
+  const vr =
+    world.xrEnabled && ((await navigator.xr?.isSessionSupported('immersive-vr').catch(() => false)) ?? false);
   configureQuality(world.renderer);
   buildEnvironment(world);
   world.registerSystem(PanelSystem);
@@ -53,10 +60,21 @@ World.create($('scene-container'), {
   const label = (button: HTMLElement, text: string) => {
     button.querySelector('.label')!.textContent = text;
   };
+  // Only what this install can do (see capabilities.ts).
+  $('add').hidden = !can.windowCapture;
+  vmButton.hidden = !can.windowsVm;
+  hyprlandButton.hidden = !can.hyprland;
+  const shortcuts = [
+    can.windowCapture && 'N window',
+    can.windowsVm && 'V VM',
+    can.hyprland && 'D Hyprland',
+    can.search && '/ search',
+    'L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar',
+  ].filter(Boolean).join(' · ');
   // Render quality readout and shortcuts, refreshed once a second.
   const showPerf = () => {
     const mode = quality.tier === 'low' ? 'Low-end mode' : 'Quality: auto';
-    meta.textContent = `${mode} · ${+quality.pixelRatio.toFixed(2)}× · ${quality.fps} fps  —  N window · V VM · D Hyprland · / search · L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar`;
+    meta.textContent = `${mode} · ${+quality.pixelRatio.toFixed(2)}× · ${quality.fps} fps  —  ${shortcuts}`;
     meta.title = `GPU: ${quality.gpu}\nTier: ${quality.tier} (${quality.source}); override with ?quality=low or ?quality=high`;
   };
   setInterval(showPerf, 1000);
@@ -263,10 +281,10 @@ World.create($('scene-container'), {
   window.addEventListener('keydown', (event) => {
     // While the VM has the keyboard, keys belong to it, not to these shortcuts.
     if (keyboardOwner() || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
-    if (event.key === 'n') void add();
-    if (event.key === 'v') void addVm();
-    if (event.key === 'd') void addHyprland();
-    if (event.key === '/') {
+    if (event.key === 'n' && can.windowCapture) void add();
+    if (event.key === 'v' && can.windowsVm) void addVm();
+    if (event.key === 'd' && can.hyprland) void addHyprland();
+    if (event.key === '/' && can.search) {
       event.preventDefault();
       void search();
     }
@@ -289,7 +307,7 @@ World.create($('scene-container'), {
   document.addEventListener('focusin', render);
   document.addEventListener('focusout', () => setTimeout(render));
 
-  if (!world.xrEnabled) xrButton.style.display = 'none';
+  xrButton.hidden = !vr;
   xrButton.onclick = () =>
     world.visibilityState.peek() === VisibilityState.NonImmersive ? world.launchXR() : world.exitXR();
   let wasInVr = false;
@@ -352,15 +370,17 @@ World.create($('scene-container'), {
   };
   let apps: Array<{ id: string; name: string }> = [];
   const controls = (): LauncherTile[] => [
-    { id: 'add', label: 'Window', icon: ICONS.add, run: () => void add() },
-    { id: 'vm', label: 'Windows VM', icon: ICONS.vm, run: () => void addVm() },
-    { id: 'hyprland', label: 'Hyprland', icon: ICONS.hyprland, active: () => hyprlandPanel() != null, run: () => void addHyprland() },
+    ...(can.windowCapture ? [{ id: 'add', label: 'Window', icon: ICONS.add, run: () => void add() }] : []),
+    ...(can.windowsVm ? [{ id: 'vm', label: 'Windows VM', icon: ICONS.vm, run: () => void addVm() }] : []),
+    ...(can.hyprland
+      ? [{ id: 'hyprland', label: 'Hyprland', icon: ICONS.hyprland, active: () => hyprlandPanel() != null, run: () => void addHyprland() }]
+      : []),
     { id: 'layout', label: desktop.layout[0].toUpperCase() + desktop.layout.slice(1), icon: ICONS.layout, run: cycleLayout },
     { id: 'music', label: 'Music', icon: ICONS.music, active: () => musicOn, run: toggleMusic },
     { id: 'sounds', label: 'Sounds', icon: ICONS.sounds, active: () => sfx.enabled, run: toggleSounds },
     { id: 'less', label: `p ${music.abundance.toFixed(2)} −`, icon: ICONS.less, run: () => setAbundance(music.abundance - 0.1) },
     { id: 'more', label: `p ${music.abundance.toFixed(2)} +`, icon: ICONS.add, run: () => setAbundance(music.abundance + 0.1) },
-    ...(world.xrEnabled
+    ...(vr
       ? [{
           id: 'vr', label: world.visibilityState.peek() === VisibilityState.NonImmersive ? 'Enter VR' : 'Exit VR', icon: ICONS.vr,
           active: () => world.visibilityState.peek() !== VisibilityState.NonImmersive,
@@ -368,27 +388,31 @@ World.create($('scene-container'), {
         }]
       : []),
   ];
-  launcher = new Launcher(world, () => [
-    { title: 'Controls', tiles: controls() },
-    {
-      title: 'Apps',
-      tiles: [
-        { id: 'search', label: 'Search', icon: ICONS.search, run: () => void search() },
-        ...apps.map((app) => ({
-          id: app.id, label: app.name, icon: ICONS[app.id as keyof typeof ICONS] ?? ICONS.vm,
-          run: () => void launchApp(app.id, app.name),
-        })),
-      ],
-    },
-  ]);
+  launcher = new Launcher(world, () =>
+    [
+      { title: 'Controls', tiles: controls() },
+      {
+        title: 'Apps',
+        tiles: [
+          ...(can.search ? [{ id: 'search', label: 'Search', icon: ICONS.search, run: () => void search() }] : []),
+          ...apps.map((app) => ({
+            id: app.id, label: app.name, icon: ICONS[app.id as keyof typeof ICONS] ?? ICONS.vm,
+            run: () => void launchApp(app.id, app.name),
+          })),
+        ],
+      },
+    ].filter((row) => row.tiles.length),
+  );
   world.getSystem(LauncherPlacementSystem)!.launcher = launcher;
-  fetch('/api/apps')
-    .then((response) => response.json() as Promise<typeof apps>)
-    .then((list) => {
-      apps = list;
-      launcher?.redraw();
-    })
-    .catch(() => launcher?.toast('App list unavailable'));
+  if (can.launcher) {
+    fetch('/api/apps')
+      .then((response) => response.json() as Promise<typeof apps>)
+      .then((list) => {
+        apps = list;
+        launcher?.redraw();
+      })
+      .catch(() => launcher?.toast('App list unavailable'));
+  }
 
   const launcherButton = $<HTMLButtonElement>('launcher');
   const setLauncherShown = (shown: boolean) => {
