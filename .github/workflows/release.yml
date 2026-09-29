@@ -5,13 +5,23 @@
 #   Spatial-Desktop-win-x64-setup.exe       Spatial-Desktop-mac-universal.dmg
 #   Spatial-Desktop-android.apk
 #
-# Run it by hand (Actions → Release → Run workflow) to build them as
-# workflow artifacts without releasing.
+# Pull requests that touch packaging, and manual runs (Actions → Release →
+# Run workflow), build everything as workflow artifacts without releasing.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - android/**
+      - capacitor.config.json
+      - electron/**
+      - electron-builder.yml
+      - package.json
+      - package-lock.json
+      - server/**
   workflow_dispatch:
 
 permissions:
