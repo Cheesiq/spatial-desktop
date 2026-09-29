@@ -1,0 +1,52 @@
+# Desktop packages: npm run dist:desktop (builds for the current OS).
+# CI builds all three on tag pushes (.github/workflows/release.yml).
+appId: io.github.cheesiq.spatialdesktop
+productName: Spatial Desktop
+copyright: Copyright © 2026 Cheesiq
+directories:
+  output: release
+  buildResources: build
+# Everything is bundled (dist/, dist-server/), so no node_modules ship.
+files:
+  - dist/**
+  - dist-server/**
+  - electron/**
+  - build/icon.png
+  - package.json
+# Stable names, so https://github.com/Cheesiq/spatial-desktop/releases/latest/download/<name> always works.
+artifactName: Spatial-Desktop-${os}-${arch}.${ext}
+publish: null
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  executableName: spatial-desktop
+  syncDesktopName: true
+  synopsis: Your desktop as panels in a deep-space neural interface
+  maintainer: Cheesiq <Cheesiq@users.noreply.github.com>
+
+deb:
+  # The Hyprland panel and window capture; the rest works without them.
+  recommends:
+    - wayvnc
+    - xdg-desktop-portal
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: Spatial-Desktop-win-${arch}-setup.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [universal]
+  category: public.app-category.productivity
+  # Unsigned: first launch needs right-click → Open (see the download page).
+  identity: null

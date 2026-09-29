@@ -1,5 +1,5 @@
 /**
- * Hyprland itself as a panel. The dev server adds a headless Hyprland output
+ * Hyprland itself as a panel. The server adds a headless Hyprland output
  * (a virtual monitor nobody sees directly) and streams it with wayvnc, so it
  * is a real part of the running desktop: apps open on it, Super+Space search
  * works on it, and windows can be moved between it and the real monitors.
@@ -26,8 +26,8 @@ import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { connect } from 'node:net';
-import type { Plugin, ViteDevServer } from 'vite';
 import { WebSocketServer } from 'ws';
+import type { Host } from './host.js';
 
 export const OUTPUT = 'SPATIAL-1';
 const WORKSPACE = 'name:spatial';
@@ -136,7 +136,17 @@ function isQuad(value: unknown): value is Quad {
   );
 }
 
-export function hyprlandDesktop(allowedOrigins: Set<string>, canRun: (program: string) => boolean): Plugin {
+export interface HyprlandDesktop {
+  /** The server is going away but may come back (a dev-server restart): stop wayvnc, keep the monitor. */
+  close(): void;
+  /** The app is quitting: also remove the virtual monitor, moving its windows to a real one. */
+  shutdown(): void;
+}
+
+/** Mount the Hyprland panel's endpoints on `host`; null outside a Hyprland session. */
+export function attachHyprland(host: Host, canRun: (program: string) => boolean): HyprlandDesktop | null {
+  if (!process.env.HYPRLAND_INSTANCE_SIGNATURE) return null;
+  const allowedOrigins = host.origins;
   let vnc: ChildProcess | null = null;
   /** The scene's window while the real cursor is on the virtual monitor. */
   let inside: { address: string; window: Rect; quad: Quad; edgeHits: number } | null = null;
@@ -147,7 +157,6 @@ export function hyprlandDesktop(allowedOrigins: Set<string>, canRun: (program: s
   /** Window on the virtual monitor that forwarded keys go to. */
   let keyTarget: string | null = null;
   const listeners = new Set<ServerResponse>();
-  let server: ViteDevServer;
 
   const broadcast = () => {
     const data = `data: ${JSON.stringify({ inside: inside != null, keyTarget: keyTarget != null })}\n\n`;
@@ -169,8 +178,8 @@ export function hyprlandDesktop(allowedOrigins: Set<string>, canRun: (program: s
       { stdio: ['ignore', 'ignore', 'pipe'] },
     );
     vnc = child;
-    child.stderr?.on('data', (data: Buffer) => server.config.logger.warn(`[wayvnc] ${String(data).trim()}`));
-    child.once('error', (error) => server.config.logger.error(`[wayvnc] ${error.message}`));
+    child.stderr?.on('data', (data: Buffer) => host.log.warn(`[wayvnc] ${String(data).trim()}`));
+    child.once('error', (error) => host.log.error(`[wayvnc] ${error.message}`));
     child.once('exit', () => vnc === child && (vnc = null));
     for (let i = 0; i < 50; i++) {
       if (await canConnect(VNC_SOCKET)) return;
@@ -333,7 +342,7 @@ export function hyprlandDesktop(allowedOrigins: Set<string>, canRun: (program: s
       req.on('error', reject);
     });
 
-  /** POST-only, same-origin, JSON-only endpoint (see appLauncher in vite.config.ts). */
+  /** POST-only, same-origin, JSON-only endpoint (see attachLauncher in server/features.ts). */
   const endpoint =
     (handler: (body: Record<string, unknown>) => Promise<object>) => async (req: IncomingMessage, res: ServerResponse) => {
       const reply = (status: number, body: object) => {
@@ -353,126 +362,118 @@ export function hyprlandDesktop(allowedOrigins: Set<string>, canRun: (program: s
 
   const unit = (value: unknown) => (typeof value === 'number' && value >= 0 && value <= 1 ? value : 0.5);
 
+  process.once('exit', cleanUp);
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.once(signal, () => {
+      cleanUp();
+      process.exit(0);
+    });
+  }
+
+  host.use(
+    '/api/hyprland/start',
+    endpoint(async () => {
+      const output = await ensureOutput();
+      await ensureVnc();
+      return { width: output.width, height: output.height };
+    }),
+  );
+  host.use(
+    '/api/hyprland/enter',
+    endpoint(async (body) => {
+      if (!isQuad(body.quad)) throw new Error('Bad quad');
+      await enter(unit(body.u), unit(body.v), body.quad);
+      return { inside: true };
+    }),
+  );
+  host.use(
+    '/api/hyprland/leave',
+    endpoint(async () => {
+      await leave();
+      return { inside: false };
+    }),
+  );
+  host.use(
+    '/api/hyprland/search',
+    endpoint(async (body) => {
+      if (!isQuad(body.quad)) throw new Error('Bad quad');
+      if (!canRun('omarchy-menu')) throw new Error('omarchy-menu is not installed');
+      // The menu opens on the focused monitor, and so do the apps it starts.
+      await enter(0.5, 0.5, body.quad);
+      spawn('omarchy-menu', ['toggle', 'apps'], { detached: true, stdio: 'ignore' }).unref();
+      return { inside: true };
+    }),
+  );
+  host.use(
+    '/api/hyprland/borrow',
+    endpoint(async (body) => {
+      await borrow(unit(body.u), unit(body.v));
+      return {};
+    }),
+  );
+  host.use(
+    '/api/hyprland/point',
+    endpoint(async (body) => {
+      // Only while borrowed: a stray request must not pull the cursor away.
+      if (borrowed && !inside) await point(unit(body.u), unit(body.v));
+      return {};
+    }),
+  );
+  host.use(
+    '/api/hyprland/return',
+    endpoint(async () => {
+      giveBack();
+      return {};
+    }),
+  );
+  host.use(
+    '/api/hyprland/key',
+    endpoint(async (body) => {
+      const code = body.code;
+      const mods = Array.isArray(body.mods) ? body.mods.filter((m): m is string => MODS.has(m as string)) : [];
+      if (typeof code !== 'number' || !Number.isInteger(code) || code < 9 || code > 255) throw new Error('Bad key code');
+      return { delivered: await sendKey(code, mods.join(' ')) };
+    }),
+  );
+  // Server-sent events: whether the real cursor is on the virtual monitor.
+  host.use('/api/hyprland/events', (req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    listeners.add(res);
+    broadcast();
+    req.on('close', () => {
+      listeners.delete(res);
+      // The page went away mid-visit: don't leave the cursor stranded.
+      if (!listeners.size) void leave().catch(() => {});
+    });
+  });
+
+  // ws://<host>/hyprland-vnc → wayvnc's unix socket.
+  const wss = new WebSocketServer({ noServer: true });
+  host.onUpgrade('/hyprland-vnc', (req, socket, head) => {
+    if (!allowedOrigins.has(req.headers.origin ?? '')) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      const upstream = connect(VNC_SOCKET);
+      upstream.on('data', (data) => ws.send(data));
+      ws.on('message', (data) => upstream.write(data as Buffer));
+      const close = () => {
+        ws.close();
+        upstream.destroy();
+      };
+      upstream.on('error', close).on('close', close);
+      ws.on('error', close).on('close', close);
+    });
+  });
+
   return {
-    name: 'hyprland-desktop',
-    apply: 'serve',
-    configureServer(devServer) {
-      server = devServer;
-      if (!process.env.HYPRLAND_INSTANCE_SIGNATURE) return;
-      process.once('exit', cleanUp);
-      // Vite restarts the server in-process when its config changes; the new
-      // instance starts its own wayvnc, and the virtual monitor carries over.
-      server.httpServer?.once('close', () => {
-        vnc?.kill();
-        vnc = null;
-        clearInterval(polling);
-      });
-      for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-        process.once(signal, () => {
-          cleanUp();
-          process.exit(0);
-        });
-      }
-
-      const middlewares = server.middlewares;
-      middlewares.use(
-        '/api/hyprland/start',
-        endpoint(async () => {
-          const output = await ensureOutput();
-          await ensureVnc();
-          return { width: output.width, height: output.height };
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/enter',
-        endpoint(async (body) => {
-          if (!isQuad(body.quad)) throw new Error('Bad quad');
-          await enter(unit(body.u), unit(body.v), body.quad);
-          return { inside: true };
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/leave',
-        endpoint(async () => {
-          await leave();
-          return { inside: false };
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/search',
-        endpoint(async (body) => {
-          if (!isQuad(body.quad)) throw new Error('Bad quad');
-          if (!canRun('omarchy-menu')) throw new Error('omarchy-menu is not installed');
-          // The menu opens on the focused monitor, and so do the apps it starts.
-          await enter(0.5, 0.5, body.quad);
-          spawn('omarchy-menu', ['toggle', 'apps'], { detached: true, stdio: 'ignore' }).unref();
-          return { inside: true };
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/borrow',
-        endpoint(async (body) => {
-          await borrow(unit(body.u), unit(body.v));
-          return {};
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/point',
-        endpoint(async (body) => {
-          // Only while borrowed: a stray request must not pull the cursor away.
-          if (borrowed && !inside) await point(unit(body.u), unit(body.v));
-          return {};
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/return',
-        endpoint(async () => {
-          giveBack();
-          return {};
-        }),
-      );
-      middlewares.use(
-        '/api/hyprland/key',
-        endpoint(async (body) => {
-          const code = body.code;
-          const mods = Array.isArray(body.mods) ? body.mods.filter((m): m is string => MODS.has(m as string)) : [];
-          if (typeof code !== 'number' || !Number.isInteger(code) || code < 9 || code > 255) throw new Error('Bad key code');
-          return { delivered: await sendKey(code, mods.join(' ')) };
-        }),
-      );
-      // Server-sent events: whether the real cursor is on the virtual monitor.
-      middlewares.use('/api/hyprland/events', (req, res) => {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-        listeners.add(res);
-        broadcast();
-        req.on('close', () => {
-          listeners.delete(res);
-          // The page went away mid-visit: don't leave the cursor stranded.
-          if (!listeners.size) void leave().catch(() => {});
-        });
-      });
-
-      // ws://localhost:5173/hyprland-vnc → wayvnc's unix socket.
-      const wss = new WebSocketServer({ noServer: true });
-      server.httpServer?.on('upgrade', (req, socket, head) => {
-        if (new URL(req.url ?? '/', 'http://x').pathname !== '/hyprland-vnc') return;
-        if (!allowedOrigins.has(req.headers.origin ?? '')) {
-          socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
-          return;
-        }
-        wss.handleUpgrade(req, socket, head, (ws) => {
-          const upstream = connect(VNC_SOCKET);
-          upstream.on('data', (data) => ws.send(data));
-          ws.on('message', (data) => upstream.write(data as Buffer));
-          const close = () => {
-            ws.close();
-            upstream.destroy();
-          };
-          upstream.on('error', close).on('close', close);
-          ws.on('error', close).on('close', close);
-        });
-      });
+    close() {
+      vnc?.kill();
+      vnc = null;
+      clearInterval(polling);
     },
+    shutdown: cleanUp,
   };
 }
 

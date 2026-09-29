@@ -3,9 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" href="data:," />
+    <link rel="icon" href="./icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#05060c" />
     <title>Spatial Desktop</title>
     <style>
+      /* Features this install doesn't have are hidden (see src/capabilities.ts). */
+      [hidden] { display: none !important; }
       /* Material 3 baseline dark scheme. */
       :root {
         --md-primary: #d0bcff; --md-on-primary: #381e72;
