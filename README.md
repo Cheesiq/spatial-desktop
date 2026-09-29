@@ -103,6 +103,7 @@ The rest of this README covers running from source, which is how you develop it.
 | **Hyprland panel** | [`wayvnc`](https://github.com/any1/wayvnc) (`sudo pacman -S wayvnc`). |
 | **Window capture** | `xdg-desktop-portal-hyprland` (included with Omarchy). |
 | **Windows VM** *(optional)* | Omarchy's Windows VM: `omarchy-windows-vm install`. |
+| **macOS VM** *(optional)* | `bin/macos-vm install` ([dockur/macos](https://github.com/dockur/macos) in Docker, needs KVM). |
 | **VR** *(optional)* | A WebXR headset. Without one, a Quest 3 emulator runs on your desktop. |
 
 ## Install
@@ -158,6 +159,7 @@ npm run desktop                 # the desktop app (Electron), from source
 | <kbd>/</kbd> | **Search** apps on the Hyprland panel |
 | <kbd>N</kbd> | Add a **window**, region or monitor (opens the share picker) |
 | <kbd>V</kbd> | Add the **Windows VM** |
+| <kbd>O</kbd> | Add the **macOS VM** |
 | <kbd>L</kbd> | Cycle **layout**: arc → grid → stack |
 | <kbd>A</kbd> | Show or hide the **launcher** dock |
 | <kbd>M</kbd> | Toggle **music** |
@@ -188,6 +190,10 @@ The virtual monitor is `SPATIAL-1`, with its own `spatial` workspace. It sits aw
 
 Install and start Omarchy's Windows VM (`omarchy-windows-vm install`, then `launch`), then press <kbd>V</kbd>. The dev server reads the VM's login from `~/.config/windows/credentials` and adds it server-side, so the password never reaches the page. Click the VM's screen to give it the keyboard, and click empty space to take it back.
 
+### The macOS VM
+
+`bin/macos-vm install` sets up macOS 15 in Docker; pass another version number to choose it, and set `RAM_SIZE`, `CPU_CORES` or `DISK_SIZE` to change the defaults (6G, 4, 64G). Then `bin/macos-vm launch` starts it and opens its web viewer on `http://127.0.0.1:8007`. The first boot downloads macOS Recovery from Apple: in Disk Utility, erase the largest disk as APFS, then choose Reinstall macOS. After that, press <kbd>O</kbd>. It works like the Windows VM: the login comes from `~/.config/macos/credentials` and is added server-side. `bin/macos-vm stop` shuts it down. Apple's license only allows macOS on Apple hardware.
+
 ### VR
 
 Click **VR** (or **Enter VR** on the launcher). With no headset attached, an emulated Quest 3 runs in the page. On a real headset, the page must be served from `localhost`. For a Quest over USB, `adb reverse tcp:5173 tcp:5173` then open `http://localhost:5173` in the headset's browser.
@@ -209,14 +215,14 @@ Either way, the render resolution adapts between 0.75× and 2× to hold about 60
 ┌──────────────── Chromium (native Wayland) ────────────────┐
 │  IWSDK / three.js scene                                    │
 │   ├─ panels  ← portal capture (PipeWire)  ─ windows        │
-│   ├─ panels  ← noVNC ── /vm-vnc ────────────┐              │
+│   ├─ panels  ← noVNC ── /vm-vnc, /macos-vnc ┐              │
 │   ├─ panels  ← noVNC ── /hyprland-vnc ──┐   │              │
 │   └─ launcher, environment, audio       │   │              │
 └─────────────────────────────────────────┼───┼──────────────┘
                    Vite dev server        │   │
    ├─ /hyprland-vnc  websocket ⇄ unix socket ─ wayvnc ─ SPATIAL-1 (headless Hyprland output)
    ├─ /api/hyprland/*  cursor, focus, keys via Hyprland IPC
-   ├─ /vm-vnc        websocket ⇄ VM's noVNC (+ credentials)
+   ├─ /vm-vnc, /macos-vnc  websocket ⇄ each VM's noVNC (+ credentials)
    └─ /api/apps, /api/launch  fixed allow-list of launchers
 ```
 
@@ -231,7 +237,7 @@ Either way, the render resolution adapts between 0.75× and 2× to hold about 60
 | `src/index.ts` | App wiring: control bar, shortcuts, launcher tiles |
 | `src/panels.ts` | Panels: layouts, dragging, focus, input routing |
 | `src/hyprland.ts` · `server/hyprland.ts` | The Hyprland panel (page side and server side) |
-| `src/vnc.ts` · `src/vm.ts` | noVNC plumbing, and the Windows VM |
+| `src/vnc.ts` · `src/vm.ts` | noVNC plumbing, and the Windows and macOS VMs |
 | `src/capture.ts` | Window capture through the desktop portal |
 | `src/environment.ts` | The neural interface scene |
 | `src/launcher.ts` | The 3D launcher dock |
@@ -305,7 +311,13 @@ Open Spatial Desktop with `bin/spatial-desktop`. It runs Chromium as a native Wa
 <details>
 <summary><b>Windows VM: "Could not reach the VM display"</b></summary>
 
-Start the VM (`omarchy-windows-vm launch`) and check that its web viewer answers on `http://127.0.0.1:8006`.
+Start the VM (`omarchy-windows-vm launch`) and check that its web viewer answers on `http://127.0.0.1:8006`. For the macOS VM, run `bin/macos-vm launch` and check `http://127.0.0.1:8007`.
+</details>
+
+<details>
+<summary><b>Windows VM won't start after it has run once</b></summary>
+
+The VM container marks `~/Windows` setgid on every start, and `omarchy-windows-vm` then refuses the next start without saying why, because it expects that folder's permissions to be exactly `700`. Run `chmod g-s ~/Windows`, then launch again.
 </details>
 
 <details>

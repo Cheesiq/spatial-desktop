@@ -1,12 +1,16 @@
 import type { PanelSource } from './source.js';
 import { connectVnc } from './vnc.js';
 
-/**
- * Connect to Omarchy's Windows VM display through the dev server's /vm-vnc
- * proxy (see vite.config.ts), which adds the VM's credentials server-side.
- */
-export async function connectVm(): Promise<PanelSource> {
-  const vnc = await connectVnc('/vm-vnc', 'Windows VM', {
+/** The VMs, each proxied by the server (server/features.ts), which adds its credentials. */
+export const VMS = {
+  windows: { route: '/vm-vnc', label: 'Windows VM' },
+  macos: { route: '/macos-vnc', label: 'macOS VM' },
+} as const;
+export type VmId = keyof typeof VMS;
+
+/** Connect to a VM's display through its server-side proxy. */
+export async function connectVm(id: VmId): Promise<PanelSource> {
+  const vnc = await connectVnc(VMS[id].route, VMS[id].label, {
     securityFailure: 'The VM rejected the VNC login',
     closed: 'The VM closed the connection',
     unreachable: 'Could not reach the VM display (is it running?)',

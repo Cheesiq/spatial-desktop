@@ -1,0 +1,139 @@
+#!/bin/bash
+# macOS VM via dockurr/macos, modelled on omarchy-windows-vm, for the macOS
+# panel in Spatial Desktop (server/features.ts reads the credentials it writes).
+#
+# The compose file lives in a root-owned directory, so a process running as the
+# user can never rewrite what a root-run `docker compose up` consumes. Every
+# Docker call goes through pkexec (one polkit prompt), since this user is not in
+# the docker group. Ports are bound to localhost and the web viewer is
+# password-protected, so other local users and web pages can't drive the VM.
+
+set -o pipefail
+
+RUNTIME_DIR=/var/lib/macos-vm
+COMPOSE_FILE="$RUNTIME_DIR/docker-compose.yml"
+CREDENTIALS_FILE="$HOME/.config/macos/credentials"
+CONTAINER=macos-vm
+WEB_PORT=8007 # 8006 is taken by the Windows VM
+WEB_URL="http://127.0.0.1:$WEB_PORT"
+
+root() { pkexec "$@"; }
+dc() { root /usr/bin/docker-compose -f "$COMPOSE_FILE" "$@"; }
+
+read_credential() { sed -n "s/^$1=//p" "$CREDENTIALS_FILE" 2>/dev/null | head -n1; }
+
+install_macos() {
+  local version="${1:-15}" ram="${RAM_SIZE:-6G}" cores="${CPU_CORES:-4}" disk="${DISK_SIZE:-64G}"
+  [[ $version =~ ^[0-9]{2}$ && $ram =~ ^[0-9]{1,3}G$ && $cores =~ ^[0-9]{1,2}$ && $disk =~ ^[0-9]{2,4}G$ ]] || {
+    echo "Invalid settings. Usage: macos-vm install [version, e.g. 15]" >&2
+    exit 1
+  }
+  [[ -e /dev/kvm ]] || { echo "KVM is not available (/dev/kvm missing)." >&2; exit 1; }
+
+  local user=macos pass
+  pass=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+  mkdir -p "$(dirname "$CREDENTIALS_FILE")"
+  (umask 077 && printf 'USERNAME=%s\nPASSWORD=%s\n' "$user" "$pass" >"$CREDENTIALS_FILE")
+
+  local tmp
+  tmp=$(mktemp)
+  trap 'rm -f "$tmp"' EXIT
+  cat >"$tmp" <<EOF
+services:
+  macos:
+    image: dockurr/macos
+    container_name: $CONTAINER
+    environment:
+      VERSION: "$version"
+      RAM_SIZE: "$ram"
+      CPU_CORES: "$cores"
+      DISK_SIZE: "$disk"
+      USERNAME: "$user"
+      PASSWORD: "$pass"
+      PROTECT: "Y"
+    devices:
+      - /dev/kvm
+      - /dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 127.0.0.1:$WEB_PORT:8006
+    volumes:
+      - $RUNTIME_DIR/storage:/storage
+    restart: "no"
+    stop_grace_period: 2m
+EOF
+
+  echo "Writing $COMPOSE_FILE (this will prompt for authorization)..."
+  root /bin/sh -c "install -d -o root -g root -m 0700 '$RUNTIME_DIR' '$RUNTIME_DIR/storage' &&
+    install -o root -g root -m 0600 '$tmp' '$COMPOSE_FILE'" || exit 1
+
+  write_desktop_entry
+  echo
+  echo "macOS $version configured: $ram RAM, $cores cores, $disk disk."
+  echo "Web viewer login: $user / $pass (also in $CREDENTIALS_FILE)"
+  echo
+  echo "First boot downloads macOS recovery from Apple. In the installer:"
+  echo "  Disk Utility → erase the largest disk (APFS) → quit → Reinstall macOS."
+  echo "Start it now with: macos-vm launch"
+}
+
+write_desktop_entry() {
+  cat >"$HOME/.local/share/applications/macos-vm.desktop" <<EOF
+[Desktop Entry]
+Name=macOS
+Comment=Start the macOS VM via Docker and open its viewer
+Exec=uwsm app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=macOS -e $(realpath "$0") launch
+Icon=computer
+Terminal=false
+Type=Application
+Categories=System;
+EOF
+}
+
+launch_macos() {
+  [[ -f $COMPOSE_FILE ]] || { echo "macOS VM not configured. Run: macos-vm install" >&2; exit 1; }
+  echo "Starting macOS VM (this may prompt for authorization)..."
+  dc up -d || { notify-send -u critical "macOS VM" "Failed to start"; exit 1; }
+
+  local i
+  for ((i = 0; i < 60; i++)); do
+    [[ $(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$WEB_URL/") =~ ^(200|401)$ ]] && break
+    sleep 2
+  done
+  echo "Viewer: $WEB_URL  (login: $(read_credential USERNAME) / $(read_credential PASSWORD))"
+  xdg-open "$WEB_URL" >/dev/null 2>&1 &
+  echo "The VM keeps running until: macos-vm stop"
+  [[ -t 0 ]] && read -rp "Press Enter to close this window..."
+}
+
+stop_macos() { echo "Stopping macOS VM..."; dc down; }
+
+status_macos() {
+  [[ -f $COMPOSE_FILE ]] || { echo "macOS VM not configured."; exit 1; }
+  local s
+  s=$(root /usr/bin/docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null)
+  echo "macOS VM: ${s:-not created}"
+  [[ $s == running ]] && echo "Viewer: $WEB_URL"
+}
+
+remove_macos() {
+  read -rp "Delete the macOS VM and its disk in $RUNTIME_DIR/storage? [y/N] " a
+  [[ $a == [yY] ]] || exit 1
+  root /bin/sh -c "docker-compose -f '$COMPOSE_FILE' down; rm -rf '$RUNTIME_DIR'"
+  rm -f "$CREDENTIALS_FILE" "$HOME/.local/share/applications/macos-vm.desktop"
+  echo "macOS VM removed."
+}
+
+case "$1" in
+install) shift; install_macos "$@" ;;
+launch | start) launch_macos ;;
+stop) stop_macos ;;
+status) status_macos ;;
+remove) remove_macos ;;
+*)
+  echo "Usage: macos-vm <install [version]|launch|stop|status|remove>"
+  echo "  Settings for install via env: RAM_SIZE=6G CPU_CORES=4 DISK_SIZE=64G"
+  exit 1
+  ;;
+esac

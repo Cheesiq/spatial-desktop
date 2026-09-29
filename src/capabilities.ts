@@ -8,6 +8,8 @@ export interface Capabilities {
   search: boolean;
   /** Omarchy's Windows VM is set up. */
   windowsVm: boolean;
+  /** The macOS VM (~/.local/bin/macos-vm) is set up. */
+  macosVm: boolean;
   /** Any launcher apps are installed. */
   launcher: boolean;
   /** The browser can capture windows or screens (not in Android's WebView). */
@@ -21,7 +23,7 @@ export interface Capabilities {
  */
 export async function detectCapabilities(): Promise<Capabilities> {
   const windowCapture = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
-  const standalone = { server: false, hyprland: false, search: false, windowsVm: false, launcher: false, windowCapture };
+  const standalone = { server: false, hyprland: false, search: false, windowsVm: false, macosVm: false, launcher: false, windowCapture };
   try {
     const response = await fetch('/api/capabilities', { cache: 'no-store' });
     const found = (await response.json()) as Partial<Capabilities>;
@@ -31,6 +33,7 @@ export async function detectCapabilities(): Promise<Capabilities> {
       hyprland: found.hyprland,
       search: found.search === true,
       windowsVm: found.windowsVm === true,
+      macosVm: found.macosVm === true,
       launcher: found.launcher === true,
       windowCapture,
     };
