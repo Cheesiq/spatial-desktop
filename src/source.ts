@@ -9,7 +9,18 @@ export interface PanelInput {
   focusKeyboard(): void;
   releaseKeyboard(): void;
   hasKeyboard(): boolean;
+  /**
+   * Hand the real mouse and keyboard over at (u, v) instead of forwarding
+   * mouse clicks: the source takes the desktop cursor itself. `quad` is where
+   * the panel's screen is in the page (CSS px: top-left, top-right,
+   * bottom-right, bottom-left) so the cursor can come back beside it.
+   */
+  enter?(u: number, v: number, quad: ScreenQuad): void;
+  /** Status line while this source has the keyboard, if not the default. */
+  hint?(): string | null;
 }
+
+export type ScreenQuad = [[number, number], [number, number], [number, number], [number, number]];
 
 /** Something a panel shows: a captured window, a VM display, ... */
 export interface PanelSource {
