@@ -21,7 +21,7 @@ import { AdaptiveResolutionSystem, configureQuality, quality } from './quality.j
 import { Launcher, LauncherPlacementSystem, type LauncherTile } from './launcher.js';
 import { AmbientMusic } from './music.js';
 import { sfx, SfxListenerSystem } from './sfx.js';
-import { connectVm } from './vm.js';
+import { connectVm, VMS, type VmId } from './vm.js';
 import { EmulatorMouseSystem } from './xr-mouse.js';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -53,6 +53,7 @@ World.create($('scene-container'), {
   const list = $<HTMLUListElement>('panels');
   const layoutButton = $<HTMLButtonElement>('layout');
   const vmButton = $<HTMLButtonElement>('vm');
+  const macosButton = $<HTMLButtonElement>('macos');
   const hyprlandButton = $<HTMLButtonElement>('hyprland');
   const xrButton = $<HTMLButtonElement>('xr');
   const status = $<HTMLDivElement>('status');
@@ -63,10 +64,12 @@ World.create($('scene-container'), {
   // Only what this install can do (see capabilities.ts).
   $('add').hidden = !can.windowCapture;
   vmButton.hidden = !can.windowsVm;
+  macosButton.hidden = !can.macosVm;
   hyprlandButton.hidden = !can.hyprland;
   const shortcuts = [
     can.windowCapture && 'N window',
-    can.windowsVm && 'V VM',
+    can.windowsVm && 'V Windows',
+    can.macosVm && 'O macOS',
     can.hyprland && 'D Hyprland',
     can.search && '/ search',
     'L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar',
@@ -121,19 +124,20 @@ World.create($('scene-container'), {
     }
   };
 
-  let vmConnecting = false;
-  const addVm = async () => {
-    if (vmConnecting || panelLabels().some(([, label]) => label === 'Windows VM')) return;
-    vmConnecting = true;
-    say('Connecting to the Windows VM…');
+  const vmConnecting = new Set<VmId>();
+  const addVm = async (id: VmId) => {
+    const { label } = VMS[id];
+    if (vmConnecting.has(id) || panelLabels().some(([, open]) => open === label)) return;
+    vmConnecting.add(id);
+    say(`Connecting to the ${label}…`);
     try {
-      addPanel(world, await connectVm());
+      addPanel(world, await connectVm(id));
       say('');
     } catch (error) {
       sfx.play('error');
-      say(`Windows VM: ${(error as Error).message}`);
+      say(`${label}: ${(error as Error).message}`);
     } finally {
-      vmConnecting = false;
+      vmConnecting.delete(id);
     }
   };
 
@@ -275,14 +279,16 @@ World.create($('scene-container'), {
   };
 
   $('add').onclick = add;
-  vmButton.onclick = addVm;
+  vmButton.onclick = () => void addVm('windows');
+  macosButton.onclick = () => void addVm('macos');
   hyprlandButton.onclick = () => void addHyprland();
   layoutButton.onclick = cycleLayout;
   window.addEventListener('keydown', (event) => {
     // While the VM has the keyboard, keys belong to it, not to these shortcuts.
     if (keyboardOwner() || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.key === 'n' && can.windowCapture) void add();
-    if (event.key === 'v' && can.windowsVm) void addVm();
+    if (event.key === 'v' && can.windowsVm) void addVm('windows');
+    if (event.key === 'o' && can.macosVm) void addVm('macos');
     if (event.key === 'd' && can.hyprland) void addHyprland();
     if (event.key === '/' && can.search) {
       event.preventDefault();
@@ -371,7 +377,8 @@ World.create($('scene-container'), {
   let apps: Array<{ id: string; name: string }> = [];
   const controls = (): LauncherTile[] => [
     ...(can.windowCapture ? [{ id: 'add', label: 'Window', icon: ICONS.add, run: () => void add() }] : []),
-    ...(can.windowsVm ? [{ id: 'vm', label: 'Windows VM', icon: ICONS.vm, run: () => void addVm() }] : []),
+    ...(can.windowsVm ? [{ id: 'vm', label: 'Windows VM', icon: ICONS.vm, run: () => void addVm('windows') }] : []),
+    ...(can.macosVm ? [{ id: 'macos', label: 'macOS VM', icon: ICONS.vm, run: () => void addVm('macos') }] : []),
     ...(can.hyprland
       ? [{ id: 'hyprland', label: 'Hyprland', icon: ICONS.hyprland, active: () => hyprlandPanel() != null, run: () => void addHyprland() }]
       : []),

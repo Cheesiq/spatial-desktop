@@ -6,9 +6,18 @@ import { isInstalled, LAUNCHER_APPS } from './apps.js';
 import { type Host, reply } from './host.js';
 import { attachHyprland, type HyprlandDesktop, launchOnPanel } from './hyprland.js';
 
-/** Omarchy's Windows VM (dockur/windows) serves noVNC's websockify here. */
-const VM_VNC = { host: '127.0.0.1', port: 8006, path: '/websockify' };
-const VM_CREDENTIALS = `${homedir()}/.config/windows/credentials`;
+/**
+ * The VMs, each a dockur container serving noVNC's websockify behind basic
+ * auth: Omarchy's Windows VM, and the macOS VM from ~/.local/bin/macos-vm.
+ * A VM counts as set up once its private (0600) credentials file exists.
+ */
+const VMS = {
+  windows: { route: '/vm-vnc', port: 8006, credentials: `${homedir()}/.config/windows/credentials` },
+  macos: { route: '/macos-vnc', port: 8007, credentials: `${homedir()}/.config/macos/credentials` },
+} as const;
+type Vm = (typeof VMS)[keyof typeof VMS];
+const VM_HOST = '127.0.0.1';
+const VM_PATH = '/websockify';
 
 const executable = (path: string) => {
   try {
@@ -26,6 +35,7 @@ export interface Capabilities {
   hyprland: boolean;
   search: boolean;
   windowsVm: boolean;
+  macosVm: boolean;
   launcher: boolean;
 }
 
@@ -34,16 +44,17 @@ function capabilities(hyprland: boolean): Capabilities {
     platform: process.platform,
     hyprland,
     search: hyprland && canRun('omarchy-menu'),
-    windowsVm: existsSync(VM_CREDENTIALS),
+    windowsVm: existsSync(VMS.windows.credentials),
+    macosVm: existsSync(VMS.macos.credentials),
     launcher: LAUNCHER_APPS.some((app) => canRun(app.requires)),
   };
 }
 
-/** USERNAME/PASSWORD from Omarchy's private (0600) VM credentials file. */
-function readVmCredentials(): { username: string; password: string } | null {
+/** USERNAME/PASSWORD from a VM's private (0600) credentials file. */
+function readVmCredentials(vm: Vm): { username: string; password: string } | null {
   try {
     const fields = Object.fromEntries(
-      readFileSync(VM_CREDENTIALS, 'utf8')
+      readFileSync(vm.credentials, 'utf8')
         .split('\n')
         .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
     );
@@ -54,29 +65,29 @@ function readVmCredentials(): { username: string; password: string } | null {
 }
 
 /**
- * Proxies ws://<host>/vm-vnc to the VM's password-protected VNC websocket,
+ * Proxies ws://<host><route> to the VM's password-protected VNC websocket,
  * adding the basic-auth header server-side so the password never reaches the
  * page. Only this app's own origin may connect; without that check any
  * website open in the browser could drive the VM through localhost.
  */
-function attachVmProxy(host: Host): void {
-  host.onUpgrade('/vm-vnc', (req, socket, head) => {
+function attachVmProxy(host: Host, vm: Vm): void {
+  host.onUpgrade(vm.route, (req, socket, head) => {
     const refuse = (status: string) => socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 
     if (!host.origins.has(req.headers.origin ?? '')) return refuse('403 Forbidden');
-    const credentials = readVmCredentials();
+    const credentials = readVmCredentials(vm);
     if (!credentials) return refuse('503 Service Unavailable');
 
     const headers = { ...req.headers };
     delete headers.cookie;
     const upstream = request({
-      host: VM_VNC.host,
-      port: VM_VNC.port,
-      path: VM_VNC.path,
+      host: VM_HOST,
+      port: vm.port,
+      path: VM_PATH,
       headers: {
         ...headers,
-        host: `${VM_VNC.host}:${VM_VNC.port}`,
-        origin: `http://${VM_VNC.host}:${VM_VNC.port}`,
+        host: `${VM_HOST}:${vm.port}`,
+        origin: `http://${VM_HOST}:${vm.port}`,
         authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`,
       },
     });
@@ -166,13 +177,13 @@ function attachLauncher(host: Host): void {
 
 /**
  * Mount everything the page talks to: capabilities, the app launcher, the
- * Windows VM proxy and the Hyprland panel. Returns the Hyprland panel's
+ * VM proxies and the Hyprland panel. Returns the Hyprland panel's
  * lifecycle (null outside a Hyprland session).
  */
 export function attachFeatures(host: Host): HyprlandDesktop | null {
   const hyprland = attachHyprland(host, canRun);
   host.use('/api/capabilities', (req, res) => reply(res, 200, capabilities(hyprland != null)));
   attachLauncher(host);
-  attachVmProxy(host);
+  for (const vm of Object.values(VMS)) attachVmProxy(host, vm);
   return hyprland;
 }
