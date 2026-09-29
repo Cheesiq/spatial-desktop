@@ -5,8 +5,10 @@
 #   Spatial-Desktop-win-x64-setup.exe       Spatial-Desktop-mac-universal.dmg
 #   Spatial-Desktop-android.apk
 #
-# Pull requests that touch packaging, and manual runs (Actions → Release →
-# Run workflow), build everything as workflow artifacts without releasing.
+# Pull requests that touch packaging build everything as workflow artifacts
+# without releasing. A manual run (Actions → Release → Run workflow) does
+# the same, or, given a tag, builds from the chosen branch and uploads the
+# files to that tag's release (creating it if needed).
 name: Release
 
 on:
@@ -23,9 +25,17 @@ on:
       - package-lock.json
       - server/**
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload to, e.g. v1.0.0 (leave empty to only build)
+        required: false
 
 permissions:
   contents: read
+
+env:
+  # The release tag: the pushed tag, or the manual run's input.
+  TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.tag }}
 
 jobs:
   desktop:
@@ -36,7 +46,7 @@ jobs:
         include:
           - { name: Linux, os: ubuntu-latest, args: --linux AppImage deb }
           - { name: Windows, os: windows-latest, args: --win nsis }
-          - { name: macOS, os: macos-latest, args: --mac dmg }
+          - { name: macOS, os: macos-latest, args: --mac dmg --universal }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -46,9 +56,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Version from the tag
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.TAG != ''
         shell: bash
-        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+        run: npm pkg set version="${TAG#v}"
       - run: npm run build
       - name: Package
         run: npx electron-builder ${{ matrix.args }} --publish never
@@ -83,7 +93,7 @@ jobs:
       - name: Version from the tag
         shell: bash
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else version="$(node -p 'require("./package.json").version')"; fi
+          if [[ -n "$TAG" ]]; then version="${TAG#v}"; else version="$(node -p 'require("./package.json").version')"; fi
           IFS=. read -r major minor patch <<< "${version%%-*}"
           echo "VERSION_NAME=$version" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_ENV"
@@ -120,7 +130,8 @@ jobs:
 
   release:
     name: Publish the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # (The env context isn't available to a job's `if`.)
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
     needs: [desktop, android]
     runs-on: ubuntu-latest
     permissions:
@@ -151,6 +162,11 @@ jobs:
 
           The Hyprland panel, Windows VM and app launcher need Linux with Hyprland (Omarchy); other platforms get the scene and window panels where the OS allows capture. For VR, open the web version in a WebXR browser such as the Quest Browser. Builds are unsigned by Apple and Microsoft: see the download page for first-launch steps.
           EOF
-          gh release create "$GITHUB_REF_NAME" artifacts/* \
-            --title "Spatial Desktop ${GITHUB_REF_NAME#v}" \
-            --notes-file notes.md --generate-notes
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # Someone made the release already (e.g. on github.com): add the files, keep its notes.
+            gh release upload "$TAG" artifacts/* --clobber
+          else
+            gh release create "$TAG" artifacts/* --target "$GITHUB_SHA" \
+              --title "Spatial Desktop ${TAG#v}" \
+              --notes-file notes.md --generate-notes
+          fi
