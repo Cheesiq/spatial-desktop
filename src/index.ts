@@ -1,13 +1,17 @@
 import { VisibilityState, World } from '@iwsdk/core';
 import { captureWindow, streamSource } from './capture.js';
 import { buildEnvironment } from './environment.js';
+import { connectHyprland, HYPRLAND_LABEL, searchOnPanel } from './hyprland.js';
 import {
   addPanel,
   desktop,
+  keyboardHint,
   keyboardOwner,
   LAYOUTS,
   panelLabels,
+  panelQuad,
   PanelSystem,
+  refreshPanels,
   releaseKeyboard,
   removePanel,
   setLayout,
@@ -42,6 +46,7 @@ World.create($('scene-container'), {
   const list = $<HTMLUListElement>('panels');
   const layoutButton = $<HTMLButtonElement>('layout');
   const vmButton = $<HTMLButtonElement>('vm');
+  const hyprlandButton = $<HTMLButtonElement>('hyprland');
   const xrButton = $<HTMLButtonElement>('xr');
   const status = $<HTMLDivElement>('status');
   const meta = $<HTMLDivElement>('meta');
@@ -51,7 +56,7 @@ World.create($('scene-container'), {
   // Render quality readout and shortcuts, refreshed once a second.
   const showPerf = () => {
     const mode = quality.tier === 'low' ? 'Low-end mode' : 'Quality: auto';
-    meta.textContent = `${mode} · ${+quality.pixelRatio.toFixed(2)}× · ${quality.fps} fps  —  N window · V VM · L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar`;
+    meta.textContent = `${mode} · ${+quality.pixelRatio.toFixed(2)}× · ${quality.fps} fps  —  N window · V VM · D Hyprland · / search · L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar`;
     meta.title = `GPU: ${quality.gpu}\nTier: ${quality.tier} (${quality.source}); override with ?quality=low or ?quality=high`;
   };
   setInterval(showPerf, 1000);
@@ -63,7 +68,7 @@ World.create($('scene-container'), {
   const render = () => {
     label(layoutButton, desktop.layout[0].toUpperCase() + desktop.layout.slice(1));
     const owner = keyboardOwner();
-    status.textContent = owner ? `Keyboard → ${owner} · click empty space to release` : message;
+    status.textContent = owner ? (keyboardHint() ?? `Keyboard → ${owner} · click empty space to release`) : message;
     status.classList.toggle('active', owner != null);
     launcher?.redraw();
     list.replaceChildren(
@@ -111,6 +116,39 @@ World.create($('scene-container'), {
       say(`Windows VM: ${(error as Error).message}`);
     } finally {
       vmConnecting = false;
+    }
+  };
+
+  // ---- Hyprland panel -----------------------------------------------------
+  const hyprlandPanel = () => panelLabels().find(([, label]) => label === HYPRLAND_LABEL)?.[0] ?? null;
+  let hyprlandConnecting: Promise<void> | null = null;
+  const addHyprland = () =>
+    (hyprlandConnecting ??= (async () => {
+      if (hyprlandPanel()) return;
+      say('Starting the Hyprland panel…');
+      try {
+        addPanel(world, await connectHyprland(refreshPanels));
+        say('Click the Hyprland panel to use it with your mouse and keyboard');
+      } catch (error) {
+        sfx.play('error');
+        say(`Hyprland: ${(error as Error).message}`);
+      }
+    })().finally(() => (hyprlandConnecting = null)));
+  /** Omarchy's app search on the panel, opening the panel first if needed. */
+  const search = async () => {
+    const opening = !hyprlandPanel();
+    await addHyprland();
+    const panel = hyprlandPanel();
+    if (!panel) return;
+    // A new panel glides into its slot first; the cursor comes back beside where it ends up.
+    if (opening) await new Promise((resolve) => setTimeout(resolve, 1200));
+    const quad = panelQuad(panel, world.camera);
+    if (!quad) return;
+    try {
+      await searchOnPanel(quad);
+    } catch (error) {
+      sfx.play('error');
+      say(`Search: ${(error as Error).message}`);
     }
   };
 
@@ -220,12 +258,18 @@ World.create($('scene-container'), {
 
   $('add').onclick = add;
   vmButton.onclick = addVm;
+  hyprlandButton.onclick = () => void addHyprland();
   layoutButton.onclick = cycleLayout;
   window.addEventListener('keydown', (event) => {
     // While the VM has the keyboard, keys belong to it, not to these shortcuts.
     if (keyboardOwner() || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.key === 'n') void add();
     if (event.key === 'v') void addVm();
+    if (event.key === 'd') void addHyprland();
+    if (event.key === '/') {
+      event.preventDefault();
+      void search();
+    }
     if (event.key === 'l') cycleLayout();
     if (event.key === 'm') toggleMusic();
     if (event.key === 's') toggleSounds();
@@ -271,6 +315,8 @@ World.create($('scene-container'), {
     browser: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z',
     files: 'M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z',
     editor: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
+    hyprland: 'M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.3L18.7 8 12 11.7 5.3 8 12 4.3zM5 9.7l6 3.4v6.6l-6-3.4V9.7zm8 10v-6.6l6-3.4v6.6l-6 3.4z',
+    search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
     activity: 'M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z',
   };
   const setAbundance = (value: number) => {
@@ -282,15 +328,23 @@ World.create($('scene-container'), {
   };
   const launchApp = async (id: string, name: string) => {
     say(`Opening ${name}…`);
+    // With the Hyprland panel open, apps open on it, right in the scene.
+    const onPanel = hyprlandPanel() != null;
     try {
       const response = await fetch('/api/launch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ id, onPanel }),
       });
       const result = (await response.json()) as { launched?: string; error?: string };
       if (!response.ok) sfx.play('error');
-      say(response.ok ? `${result.launched} opened on your desktop · + Window to bring it in` : `${name}: ${result.error}`);
+      say(
+        !response.ok
+          ? `${name}: ${result.error}`
+          : onPanel
+            ? `${result.launched} opened on the Hyprland panel`
+            : `${result.launched} opened on your desktop · + Window to bring it in`,
+      );
     } catch {
       sfx.play('error');
       say(`${name}: the launcher server isn't reachable`);
@@ -300,6 +354,7 @@ World.create($('scene-container'), {
   const controls = (): LauncherTile[] => [
     { id: 'add', label: 'Window', icon: ICONS.add, run: () => void add() },
     { id: 'vm', label: 'Windows VM', icon: ICONS.vm, run: () => void addVm() },
+    { id: 'hyprland', label: 'Hyprland', icon: ICONS.hyprland, active: () => hyprlandPanel() != null, run: () => void addHyprland() },
     { id: 'layout', label: desktop.layout[0].toUpperCase() + desktop.layout.slice(1), icon: ICONS.layout, run: cycleLayout },
     { id: 'music', label: 'Music', icon: ICONS.music, active: () => musicOn, run: toggleMusic },
     { id: 'sounds', label: 'Sounds', icon: ICONS.sounds, active: () => sfx.enabled, run: toggleSounds },
@@ -317,10 +372,13 @@ World.create($('scene-container'), {
     { title: 'Controls', tiles: controls() },
     {
       title: 'Apps',
-      tiles: apps.map((app) => ({
-        id: app.id, label: app.name, icon: ICONS[app.id as keyof typeof ICONS] ?? ICONS.vm,
-        run: () => void launchApp(app.id, app.name),
-      })),
+      tiles: [
+        { id: 'search', label: 'Search', icon: ICONS.search, run: () => void search() },
+        ...apps.map((app) => ({
+          id: app.id, label: app.name, icon: ICONS[app.id as keyof typeof ICONS] ?? ICONS.vm,
+          run: () => void launchApp(app.id, app.name),
+        })),
+      ],
     },
   ]);
   world.getSystem(LauncherPlacementSystem)!.launcher = launcher;

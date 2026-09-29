@@ -1,4 +1,5 @@
 import {
+  type Camera,
   Color,
   createComponent,
   createSystem,
@@ -15,7 +16,7 @@ import {
 } from '@iwsdk/core';
 import { meshUv, pointerRay, type RayEvent } from './pointer.js';
 import { sfx } from './sfx.js';
-import type { PanelSource } from './source.js';
+import type { PanelSource, ScreenQuad } from './source.js';
 
 export const Panel = createComponent('Panel', {});
 
@@ -31,6 +32,9 @@ const FRAME_HOVER = new Color('#89b4fa');
 const FRAME_FOCUS = new Color('#f5c2e7');
 const FRAME_KEYBOARD = new Color('#a6e3a1');
 const soundAt = new Vector3();
+const corner = new Vector3();
+/** The scene's canvas, for turning projected points into page pixels. */
+let canvas: HTMLCanvasElement | null = null;
 
 interface PanelRecord {
   source: PanelSource;
@@ -45,6 +49,8 @@ interface PanelRecord {
   drag: DragState | null;
   /** Pointer currently driving the source's input (mouse held on the VM), if any. */
   inputPointer: number | null;
+  /** Mouse pressed on a source that takes the real cursor on release (Hyprland). */
+  enterPointer: number | null;
   /** Pointers (mouse, controller rays) currently over the panel. */
   hovering: Set<number>;
 }
@@ -75,6 +81,7 @@ export function setLayout(layout: Layout): void {
 }
 
 export function addPanel(world: World, source: PanelSource): Entity {
+  canvas = world.renderer.domElement;
   const root = new Group();
   const screen = new Mesh(new PlaneGeometry(1, 1), new MeshBasicMaterial({ map: source.texture, toneMapped: false }));
   const frame = new MeshBasicMaterial({ color: FRAME_IDLE, side: DoubleSide });
@@ -99,6 +106,7 @@ export function addPanel(world: World, source: PanelSource): Entity {
     placed: false,
     drag: null,
     inputPointer: null,
+    enterPointer: null,
     hovering: new Set(),
   };
   fit(record);
@@ -137,6 +145,31 @@ export function releaseKeyboard(): void {
     paintFrames();
     desktop.onChange();
   }
+}
+
+/** Repaint frames and the HUD after a source's input state changed on its own. */
+export function refreshPanels(): void {
+  paintFrames();
+  desktop.onChange();
+}
+
+/** Status text for whichever panel has the keyboard, if it has its own. */
+export function keyboardHint(): string | null {
+  for (const record of desktop.panels.values()) if (record.source.input?.hasKeyboard()) return record.source.input.hint?.() ?? null;
+  return null;
+}
+
+/** Where a panel's screen is in the page, in CSS px (TL, TR, BR, BL). */
+export function panelQuad(entity: Entity, camera: Camera): ScreenQuad | null {
+  const record = desktop.panels.get(entity);
+  if (!record || !canvas) return null;
+  const rect = canvas.getBoundingClientRect();
+  record.screen.updateWorldMatrix(true, false);
+  const project = (x: number, y: number): [number, number] => {
+    corner.set(x, y, 0).applyMatrix4(record.screen.matrixWorld).project(camera);
+    return [rect.left + ((corner.x + 1) / 2) * rect.width, rect.top + ((1 - corner.y) / 2) * rect.height];
+  };
+  return [project(-0.5, 0.5), project(0.5, 0.5), project(0.5, -0.5), project(-0.5, -0.5)];
 }
 
 export function keyboardOwner(): string | null {
@@ -181,9 +214,15 @@ function attachPointer(entity: Entity, record: PanelRecord): void {
   });
 
   target.addEventListener('pointerdown', (event) => {
-    if (record.drag || record.inputPointer != null) return;
+    if (record.drag || record.inputPointer != null || record.enterPointer != null) return;
     event.stopPropagation();
     target.setPointerCapture(event.pointerId);
+
+    // The mouse on a source that can take the real cursor: hand it over on release.
+    if (input?.enter && onScreen(event) && event.pointerType.startsWith('screen')) {
+      record.enterPointer = event.pointerId;
+      return;
+    }
 
     if (input && onScreen(event)) {
       const at = meshUv(record.screen, pointerRay(event), hit);
@@ -233,7 +272,18 @@ function attachPointer(entity: Entity, record: PanelRecord): void {
   });
 
   type EndEvent = RayEvent & { pointerId: number };
-  const end = (event: EndEvent, buttons: number) => {
+  const end = (event: EndEvent, buttons: number, cancelled = false) => {
+    if (record.enterPointer === event.pointerId) {
+      record.enterPointer = null;
+      target.releasePointerCapture(event.pointerId);
+      const at = meshUv(record.screen, pointerRay(event), hit);
+      const quad = panelQuad(entity, event.camera);
+      if (at?.inside && quad && !cancelled) {
+        sfx.play('keyboard', { at: record.root.getWorldPosition(soundAt) });
+        input?.enter?.(at.u, at.v, quad);
+      }
+      return;
+    }
     if (record.inputPointer === event.pointerId) {
       record.inputPointer = null;
       target.releasePointerCapture(event.pointerId);
@@ -259,7 +309,7 @@ function attachPointer(entity: Entity, record: PanelRecord): void {
   };
   target.addEventListener('pointerup', (event) => end(event, event.buttons));
   // A cancelled pointer must not leave VM buttons stuck down.
-  target.addEventListener('pointercancel', (event) => end(event, 0));
+  target.addEventListener('pointercancel', (event) => end(event, 0, true));
 }
 
 function paintFrames(): void {

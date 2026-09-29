@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig, type Plugin } from 'vite';
 import { isInstalled, LAUNCHER_APPS } from './server/apps.js';
+import { hyprlandDesktop, launchOnPanel } from './server/hyprland.js';
 
 const PORT = 5173;
 /** Only this app's own pages may use the VM proxy or the app launcher. */
@@ -88,6 +89,16 @@ function vmVncProxy(): Plugin {
   };
 }
 
+const executable = (path: string) => {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const canRun = (program: string) => isInstalled(program, executable);
+
 /**
  * GET /api/apps lists the launcher's apps; POST /api/launch {"id": "..."}
  * starts one. Only ids from server/apps.ts can run, each as a fixed argv with
@@ -96,16 +107,8 @@ function vmVncProxy(): Plugin {
  */
 function appLauncher(): Plugin {
   const lastLaunch = new Map<string, number>();
-  const executable = (path: string) => {
-    try {
-      accessSync(path, constants.X_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  };
   // Re-checked per request, so installing an app makes it appear without a restart.
-  const installedApps = () => LAUNCHER_APPS.filter((app) => isInstalled(app.requires, executable));
+  const installedApps = () => LAUNCHER_APPS.filter((app) => canRun(app.requires));
   return {
     name: 'app-launcher',
     apply: 'serve',
@@ -131,8 +134,9 @@ function appLauncher(): Plugin {
         });
         req.on('end', () => {
           let id: unknown;
+          let onPanel: unknown = false;
           try {
-            id = JSON.parse(body).id;
+            ({ id, onPanel = false } = JSON.parse(body));
           } catch {
             return reply(400, { error: 'Bad JSON' });
           }
@@ -143,6 +147,14 @@ function appLauncher(): Plugin {
           if (now - (lastLaunch.get(app.id) ?? 0) < 1500) return reply(200, { launched: app.name, deduplicated: true });
           lastLaunch.set(app.id, now);
 
+          // With the Hyprland panel open, start it there so it shows up in the scene.
+          if (onPanel === true) {
+            launchOnPanel(app.command).then(
+              (launched) => (launched ? reply(200, { launched: app.name, onPanel: true }) : reply(409, { error: 'The Hyprland panel is not open' })),
+              (error: Error) => reply(500, { error: error.message }),
+            );
+            return;
+          }
           const child = spawn(app.command[0], app.command.slice(1), { detached: true, stdio: 'ignore' });
           child.once('error', (error) => server.config.logger.error(`[launcher] ${app.name}: ${error.message}`));
           child.once('spawn', () => {
@@ -159,7 +171,7 @@ function appLauncher(): Plugin {
 export default defineConfig({
   // Emulates a Quest 3 on localhost so the XR session runs on a plain
   // Hyprland desktop; a real headset skips the emulator via its user agent.
-  plugins: [iwsdkDev({ emulator: { device: 'metaQuest3' }, https: false }), vmVncProxy(), appLauncher()],
+  plugins: [iwsdkDev({ emulator: { device: 'metaQuest3' }, https: false }), vmVncProxy(), appLauncher(), hyprlandDesktop(ALLOWED_ORIGINS, canRun)],
   server: { host: '127.0.0.1', port: PORT, strictPort: true, open: false },
   build: { outDir: 'dist', target: 'esnext' },
   // noVNC uses top-level await, so dependencies must target esnext too.
