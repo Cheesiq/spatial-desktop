@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spatial Desktop — Download</title>
+    <meta name="description" content="Your Hyprland desktop, apps and Windows VM as panels in a deep-space neural interface. Download for Linux, Windows, macOS, Android and Meta Quest, or open it in your browser." />
+    <meta name="theme-color" content="#05060c" />
+    <link rel="icon" href="icon.png" />
+    <meta property="og:title" content="Spatial Desktop" />
+    <meta property="og:description" content="Your desktop as panels in a deep-space neural interface, in WebXR." />
+    <meta property="og:image" content="https://cheesiq.github.io/spatial-desktop/images/hero.jpg" />
+    <style>
+      :root {
+        --bg: #05060c;
+        --surface: #110f18;
+        --surface-2: #1a1724;
+        --outline: #2d2a38;
+        --text: #ece6f3;
+        --muted: #a9a2b7;
+        --primary: #d0bcff;
+        --on-primary: #21005d;
+        --cyan: #5fe1ff;
+        --magenta: #ff6ad5;
+        --violet: #8c73ff;
+        --radius: 20px;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.6 Inter, "Segoe UI", Roboto, "Noto Sans", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--cyan); }
+      img { max-width: 100%; height: auto; display: block; }
+      code, kbd { font: 0.9em ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, monospace; }
+      code { background: var(--surface-2); padding: 0.1em 0.4em; border-radius: 6px; }
+      .wrap { width: min(1180px, 100% - 32px); margin-inline: auto; }
+
+      /* ---- header ---- */
+      header.bar {
+        position: sticky; top: 0; z-index: 10;
+        backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+        background: color-mix(in srgb, var(--bg) 72%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--outline) 60%, transparent);
+      }
+      header.bar .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+      .brand { display: flex; align-items: center; gap: 10px; color: var(--text); text-decoration: none; font-weight: 600; }
+      .brand img { width: 32px; height: 32px; border-radius: 9px; }
+      nav { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+      nav a { color: var(--muted); text-decoration: none; padding: 8px 12px; border-radius: 999px; font-size: 14px; }
+      nav a:hover { color: var(--text); background: var(--surface-2); }
+      .brand { white-space: nowrap; }
+      @media (max-width: 720px) { nav a.optional { display: none; } }
+      @media (max-width: 480px) {
+        nav a { padding: 8px 8px; font-size: 13px; }
+        nav a.narrow-hide { display: none; }
+      }
+
+      /* ---- hero ---- */
+      .hero { position: relative; overflow: hidden; padding: 72px 0 48px; }
+      #network { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.8; pointer-events: none; }
+      .hero::after {
+        content: ""; position: absolute; inset: 0; pointer-events: none;
+        background: radial-gradient(60% 50% at 70% 10%, rgb(140 115 255 / 0.22), transparent 70%),
+                    radial-gradient(50% 40% at 15% 30%, rgb(95 225 255 / 0.12), transparent 70%);
+      }
+      .hero .wrap { position: relative; z-index: 1; text-align: center; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+        background: color-mix(in srgb, var(--surface-2) 80%, transparent); border: 1px solid var(--outline);
+        color: var(--muted); font-size: 13px;
+      }
+      .eyebrow .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 10px var(--cyan); }
+      h1 {
+        margin: 20px auto 12px; max-width: 16ch; font-size: clamp(2.4rem, 6vw, 4.4rem); line-height: 1.05; letter-spacing: -0.03em;
+        background: linear-gradient(120deg, #fff 20%, var(--primary) 55%, var(--cyan) 90%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+      }
+      .lede { margin: 0 auto; max-width: 60ch; color: var(--muted); font-size: clamp(1rem, 2vw, 1.2rem); }
+      .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 32px 0 12px; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 22px; border-radius: 999px;
+        font-weight: 600; text-decoration: none; border: 1px solid var(--outline); color: var(--text); background: var(--surface-2);
+        transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      }
+      .btn:hover { transform: translateY(-1px); background: #231f30; }
+      .btn.primary { background: var(--primary); color: var(--on-primary); border-color: transparent; box-shadow: 0 8px 30px rgb(208 188 255 / 0.25); }
+      .btn.primary:hover { background: #e0d2ff; }
+      .btn svg { width: 20px; height: 20px; fill: currentColor; flex: none; }
+      .meta { color: var(--muted); font-size: 14px; min-height: 1.6em; }
+      .shot {
+        margin: 44px auto 0; border-radius: 22px; overflow: hidden; border: 1px solid var(--outline);
+        box-shadow: 0 30px 90px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.03), 0 0 120px rgb(140 115 255 / 0.18);
+      }
+
+      /* ---- sections ---- */
+      section { padding: 64px 0; }
+      h2 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); letter-spacing: -0.02em; margin: 0 0 8px; }
+      .sub { color: var(--muted); margin: 0 0 32px; max-width: 70ch; }
+
+      .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+      .card {
+        position: relative; display: flex; flex-direction: column; gap: 12px; padding: 22px; border-radius: var(--radius);
+        background: linear-gradient(180deg, var(--surface-2), var(--surface)); border: 1px solid var(--outline);
+      }
+      .card.detected { border-color: color-mix(in srgb, var(--primary) 70%, transparent); box-shadow: 0 0 0 1px rgb(208 188 255 / 0.25), 0 12px 40px rgb(140 115 255 / 0.15); }
+      .card.detected::before {
+        content: "Your device"; position: absolute; top: -11px; right: 18px; padding: 2px 10px; border-radius: 999px;
+        background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 700;
+      }
+      .card h3 { margin: 0; display: flex; align-items: center; gap: 12px; font-size: 1.15rem; }
+      .card h3 svg { width: 28px; height: 28px; fill: var(--text); }
+      .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+      .card .files { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+      .file {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px;
+        background: rgb(255 255 255 / 0.03); border: 1px solid var(--outline); color: var(--text); text-decoration: none; font-weight: 600; font-size: 14.5px;
+      }
+      .file:hover { border-color: var(--primary); background: rgb(208 188 255 / 0.06); }
+      .file small { color: var(--muted); font-weight: 400; white-space: nowrap; }
+      details { font-size: 14px; color: var(--muted); }
+      details summary { cursor: pointer; color: var(--text); }
+      details ol, details ul { padding-left: 1.2em; margin: 8px 0 0; }
+
+      /* ---- matrix ---- */
+      .table-wrap { overflow-x: auto; border: 1px solid var(--outline); border-radius: var(--radius); }
+      table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 14.5px; }
+      th, td { padding: 14px 16px; text-align: center; border-bottom: 1px solid var(--outline); }
+      th:first-child, td:first-child { text-align: left; }
+      thead th { background: var(--surface-2); font-weight: 600; }
+      tbody tr:last-child td { border-bottom: 0; }
+      .yes { color: #7ef0b0; font-weight: 700; }
+      .no { color: #6d6779; }
+      .part { color: #ffd479; }
+      .legend { color: var(--muted); font-size: 13.5px; margin-top: 12px; }
+
+      /* ---- gallery ---- */
+      .gallery { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+      .gallery figure { margin: 0; border-radius: 16px; overflow: hidden; border: 1px solid var(--outline); background: var(--surface); }
+      .gallery figcaption { padding: 10px 14px; color: var(--muted); font-size: 14px; }
+      @media (max-width: 420px) { .gallery { grid-template-columns: 1fr; } }
+
+      /* ---- releases ---- */
+      .release { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--outline); margin-bottom: 14px; }
+      .release header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 14px; margin-bottom: 10px; }
+      .release h3 { margin: 0; font-size: 1.2rem; }
+      .tag { font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; background: rgb(95 225 255 / 0.12); color: var(--cyan); }
+      .tag.pre { background: rgb(255 212 121 / 0.12); color: #ffd479; }
+      .release time { color: var(--muted); font-size: 14px; }
+      .notes { color: var(--muted); font-size: 14.5px; }
+      .notes h4 { color: var(--text); margin: 14px 0 6px; font-size: 1rem; }
+      .notes ul { margin: 6px 0; padding-left: 1.2em; }
+      .notes table { min-width: 0; font-size: 13.5px; margin: 8px 0; }
+      .notes td, .notes th { padding: 6px 10px; text-align: left; }
+      .assets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+      .assets a { font-size: 13.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--outline); color: var(--text); text-decoration: none; }
+      .assets a:hover { border-color: var(--primary); }
+      .empty { padding: 28px; border-radius: var(--radius); border: 1px dashed var(--outline); color: var(--muted); text-align: center; }
+
+      footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--outline); }
+      footer .wrap { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <div class="wrap">
+        <a class="brand" href="#top"><img src="icon.png" alt="" />Spatial Desktop</a>
+        <nav>
+          <a href="#download">Download</a>
+          <a class="optional" href="#platforms">Platforms</a>
+          <a class="optional" href="#screenshots">Screenshots</a>
+          <a class="narrow-hide" href="#releases">Releases</a>
+          <a href="https://github.com/Cheesiq/spatial-desktop">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="top">
+      <div class="hero">
+        <canvas id="network" aria-hidden="true"></canvas>
+        <div class="wrap">
+          <span class="eyebrow"><span class="dot"></span><span id="version-chip">Linux · Windows · macOS · Android · Quest · Web</span></span>
+          <h1>Your desktop, in deep space.</h1>
+          <p class="lede">
+            Your Hyprland desktop, your apps and your Windows VM float as panels in a living neural interface.
+            Use it in a window or step into it in VR.
+          </p>
+          <div class="actions">
+            <a class="btn primary" id="primary-download" href="#download">
+              <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z" /></svg>
+              <span>Download</span>
+            </a>
+            <a class="btn" href="app/">
+              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.93 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z" /></svg>
+              <span>Open in your browser</span>
+            </a>
+          </div>
+          <div class="meta" id="meta">Free and open source · <a href="#releases">all releases</a></div>
+          <img class="shot" src="images/hero.jpg" width="1600" height="900"
+               alt="Three panels in an arc — a terminal, Hyprland itself and Neovim — in front of a glowing neural core" />
+        </div>
+      </div>
+
+      <section id="download">
+        <div class="wrap">
+          <h2>Download</h2>
+          <p class="sub">
+            Pick your platform. Every build contains the whole scene. What else it can do depends on the platform: see
+            <a href="#platforms">what works where</a>.
+          </p>
+          <div class="grid" id="downloads">
+            <article class="card" data-os="linux">
+              <h3><svg viewBox="0 0 24 24"><path d="M12.5 2c-1.66 0-2.8 1.39-2.8 3.5 0 1.02.18 1.83.2 2.45-.9 1.02-2.3 2.83-2.9 4.8-.52 1.7-.12 3.05-.53 3.94-.33.72-1.47.85-1.47 1.93 0 .73.62 1.02 1.47 1.3 1.37.44 2.2 1.08 3.25 1.08.99 0 1.52-.64 2.38-.64.91 0 1.5.64 2.62.64 1.2 0 1.77-.8 2.94-1.26.94-.37 1.64-.66 1.64-1.4 0-.94-1.04-1.1-1.32-1.8-.33-.8.1-2.26-.42-3.9-.6-1.9-1.88-3.64-2.7-4.66.05-.72.19-1.56.19-2.48C15.05 3.3 14.07 2 12.5 2zm-1.1 3.2c.36 0 .6.4.6.9s-.24.9-.6.9-.6-.4-.6-.9.24-.9.6-.9zm2.2 0c.4 0 .7.43.7.95s-.3.95-.7.95-.7-.43-.7-.95.3-.95.7-.95zm-1.1 2.08c.8 0 1.72.43 1.72.82 0 .33-.9.9-1.72.9s-1.72-.55-1.72-.9c0-.39.92-.82 1.72-.82z" /></svg>Linux</h3>
+              <p>Every feature: the <strong>Hyprland panel</strong>, the <strong>Windows VM</strong>, and apps opening right in the scene. Best on Omarchy.</p>
+              <div class="files">
+                <a class="file" data-asset="Spatial-Desktop-linux-x86_64.AppImage">AppImage <small>any distro · x64</small></a>
+                <a class="file" data-asset="Spatial-Desktop-linux-amd64.deb">.deb <small>Debian, Ubuntu · x64</small></a>
+              </div>
+              <details>
+                <summary>Install</summary>
+                <ol>
+                  <li>AppImage: <code>chmod +x Spatial-Desktop-linux-x86_64.AppImage</code>, then run it.</li>
+                  <li>Debian/Ubuntu: <code>sudo apt install ./Spatial-Desktop-linux-amd64.deb</code></li>
+                  <li>For the Hyprland panel: <code>sudo pacman -S wayvnc</code> (or your distro's package).</li>
+                </ol>
+              </details>
+            </article>
+
+            <article class="card" data-os="windows">
+              <h3><svg viewBox="0 0 24 24"><path d="M3 5.5 10.5 4.5v7H3v-6zm0 13 7.5 1v-7H3v6zm8.5 1.13L21 21v-8.5h-9.5v7.13zm0-15.26v7.13H21V3l-9.5 1.37z" /></svg>Windows</h3>
+              <p>The scene, window panels from any window or screen, layouts, launcher and music.</p>
+              <div class="files">
+                <a class="file" data-asset="Spatial-Desktop-win-x64-setup.exe">Installer <small>Windows 10/11 · x64</small></a>
+              </div>
+              <details>
+                <summary>Install</summary>
+                <ol>
+                  <li>Run the installer.</li>
+                  <li>It isn't code-signed yet, so SmartScreen may warn you: choose <em>More info → Run anyway</em>.</li>
+                </ol>
+              </details>
+            </article>
+
+            <article class="card" data-os="mac">
+              <h3><svg viewBox="0 0 24 24"><path d="M16.37 12.62c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.7-3.18-1.72-1.35-.14-2.64.8-3.33.8-.69 0-1.74-.78-2.87-.76-1.47.02-2.83.86-3.59 2.18-1.53 2.66-.39 6.6 1.1 8.76.73 1.06 1.6 2.24 2.73 2.2 1.1-.04 1.51-.7 2.84-.7 1.32 0 1.7.7 2.86.68 1.18-.02 1.93-1.07 2.65-2.14.84-1.22 1.18-2.41 1.2-2.47-.03-.01-2.3-.88-2.3-3.5zM14.2 6.18c.6-.73 1.01-1.75.9-2.76-.87.03-1.92.58-2.54 1.3-.56.64-1.05 1.67-.92 2.66.97.07 1.96-.49 2.56-1.2z" /></svg>macOS</h3>
+              <p>The scene and window panels (allow <em>Screen Recording</em> when asked). Apple silicon and Intel in one download.</p>
+              <div class="files">
+                <a class="file" data-asset="Spatial-Desktop-mac-universal.dmg">Disk image <small>macOS 12+ · universal</small></a>
+              </div>
+              <details>
+                <summary>Install</summary>
+                <ol>
+                  <li>Open the .dmg and drag Spatial Desktop to Applications.</li>
+                  <li>It isn't notarized yet, so the first time, <em>right-click → Open → Open</em>. If macOS still refuses, run
+                    <code>xattr -dr com.apple.quarantine "/Applications/Spatial Desktop.app"</code>.</li>
+                </ol>
+              </details>
+            </article>
+
+            <article class="card" data-os="android">
+              <h3><svg viewBox="0 0 24 24"><path d="M17.6 9.48 19.44 6.3a.62.62 0 0 0-1.08-.62l-1.87 3.23a11.43 11.43 0 0 0-8.98 0L5.64 5.68a.62.62 0 0 0-1.08.62L6.4 9.48A10.78 10.78 0 0 0 1 18h22a10.78 10.78 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z" /></svg>Android &amp; Quest</h3>
+              <p>The scene as an app, offline, on phones, tablets and Meta Quest (as a 2D window). For VR on Quest, use the web version in the Quest Browser.</p>
+              <div class="files">
+                <a class="file" data-asset="Spatial-Desktop-android.apk">APK <small>Android 7+ · Quest</small></a>
+              </div>
+              <details>
+                <summary>Install</summary>
+                <ol>
+                  <li>Phone or tablet: open the APK and allow installing from your browser when asked.</li>
+                  <li>Quest: enable developer mode, then install with <code>adb install Spatial-Desktop-android.apk</code> or SideQuest. It appears under <em>Unknown sources</em>.</li>
+                </ol>
+              </details>
+            </article>
+
+            <article class="card" data-os="web">
+              <h3><svg viewBox="0 0 24 24"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V8h18v11zM5 5.5h2v1H5zm3 0h2v1H8z" /></svg>Web &amp; VR headsets</h3>
+              <p>Nothing to install. Runs in any modern browser, with <strong>real VR</strong> in the Quest Browser and other WebXR browsers. Add it to your home screen from the browser menu.</p>
+              <div class="files">
+                <a class="file" href="app/">Open Spatial Desktop <small>in this browser</small></a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="platforms">
+        <div class="wrap">
+          <h2>What works where</h2>
+          <p class="sub">
+            Spatial Desktop runs everywhere. Its desktop superpowers come from Hyprland, so they need Linux with Hyprland,
+            and the app offers only the features your device supports.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Feature</th><th>Linux + Hyprland</th><th>Other Linux</th><th>Windows</th><th>macOS</th><th>Android / Quest app</th><th>Web</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Neural interface scene, layouts, launcher, music</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+                <tr><td>Window and screen panels</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td><td class="part">desktop browsers</td></tr>
+                <tr><td>Hyprland itself as a panel, app search</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+                <tr><td>Windows VM panel (Omarchy)</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+                <tr><td>Launch apps into the scene</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td></tr>
+                <tr><td>VR</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="no">—</td><td class="yes">Quest Browser and other WebXR browsers</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="legend">✓ supported · <span class="part">amber</span>: with the noted hardware or browser · — not available on that platform</p>
+        </div>
+      </section>
+
+      <section id="screenshots">
+        <div class="wrap">
+          <h2>Screenshots</h2>
+          <p class="sub">Everything in the scene is generated in code and animated in real time.</p>
+          <div class="gallery">
+            <figure><img loading="lazy" src="images/hyprland-panel.jpg" width="1600" height="900" alt="The Hyprland panel up close" /><figcaption>Hyprland itself, as a panel you can click into</figcaption></figure>
+            <figure><img loading="lazy" src="images/hyprland-search.jpg" width="1600" height="900" alt="Omarchy's app search on the Hyprland panel" /><figcaption>Omarchy's app search, right on the panel</figcaption></figure>
+            <figure><img loading="lazy" src="images/neural-core.jpg" width="1600" height="900" alt="The neural core" /><figcaption>The neural core and its interface rings</figcaption></figure>
+            <figure><img loading="lazy" src="images/neural-network.jpg" width="1600" height="900" alt="Neuron clusters in front of a nebula" /><figcaption>Neurons firing along their synapses</figcaption></figure>
+            <figure><img loading="lazy" src="images/layout-grid.jpg" width="1600" height="900" alt="Grid layout" /><figcaption>Arc, grid and stack layouts</figcaption></figure>
+            <figure><img loading="lazy" src="images/launcher.jpg" width="1600" height="900" alt="The 3D launcher dock" /><figcaption>The launcher dock, for mouse or XR controllers</figcaption></figure>
+          </div>
+        </div>
+      </section>
+
+      <section id="releases">
+        <div class="wrap">
+          <h2>Releases</h2>
+          <p class="sub">Every version, newest first, with its downloads. Also on <a href="https://github.com/Cheesiq/spatial-desktop/releases">GitHub</a>.</p>
+          <div id="release-list"><div class="empty">Loading releases…</div></div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Spatial Desktop · built on Meta's Immersive Web SDK and three.js</span>
+        <span><a href="https://github.com/Cheesiq/spatial-desktop">Source</a> · <a href="https://github.com/Cheesiq/spatial-desktop/issues">Report an issue</a> · <a href="https://github.com/Cheesiq/spatial-desktop#readme">Documentation</a></span>
+      </div>
+    </footer>
+
+    <script>
+      const REPO = 'Cheesiq/spatial-desktop';
+      const LATEST = `https://github.com/${REPO}/releases/latest/download/`;
+      const $ = (selector) => document.querySelector(selector);
+      const escape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const size = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
+      const date = (iso) => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+
+      // ---- which platform is this? ----
+      function detectOs() {
+        const ua = navigator.userAgent;
+        const platform = (navigator.userAgentData?.platform || navigator.platform || '').toLowerCase();
+        if (/OculusBrowser|Quest/i.test(ua)) return 'web';
+        if (/Android/i.test(ua)) return 'android';
+        if (/iPhone|iPad|iPod/i.test(ua)) return 'web';
+        if (platform.includes('win')) return 'windows';
+        if (platform.includes('mac')) return 'mac';
+        if (platform.includes('linux') || /Linux|X11/i.test(ua)) return 'linux';
+        return 'web';
+      }
+      const os = detectOs();
+      const labels = { linux: 'Download for Linux', windows: 'Download for Windows', mac: 'Download for macOS', android: 'Download for Android', web: 'Open in your browser' };
+      const primaryAsset = { linux: 'Spatial-Desktop-linux-x86_64.AppImage', windows: 'Spatial-Desktop-win-x64-setup.exe', mac: 'Spatial-Desktop-mac-universal.dmg', android: 'Spatial-Desktop-android.apk' };
+      document.querySelector(`.card[data-os="${os}"]`)?.classList.add('detected');
+      const primary = $('#primary-download');
+      primary.querySelector('span').textContent = labels[os];
+      if (os === 'web') primary.href = 'app/';
+
+      // ---- releases from GitHub ----
+      // Tiny markdown for release notes: text is escaped first, then a few safe patterns.
+      function markdown(source) {
+        const inline = (text) =>
+          escape(text)
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
+            .replace(/(^|[\s(])(https:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>');
+        const out = [];
+        let list = false, table = [];
+        const flushTable = () => {
+          if (!table.length) return;
+          const cells = (row) => row.replace(/^\||\|$/g, '').split('|').map((cell) => inline(cell.trim()));
+          // Drop the |---|---| separator row; the first row is the header.
+          const rows = table.filter((row) => !/^\|?[\s:|-]+\|?$/.test(row));
+          out.push('<table>' + rows.map((row, i) => `<tr>${cells(row).map((c) => (i ? `<td>${c}</td>` : `<th>${c}</th>`)).join('')}</tr>`).join('') + '</table>');
+          table = [];
+        };
+        for (const line of source.replace(/\r/g, '').split('\n')) {
+          if (/^\s*\|/.test(line)) { table.push(line.trim()); continue; }
+          flushTable();
+          const item = /^\s*[-*] (.*)/.exec(line);
+          if (item) { if (!list) out.push('<ul>'); list = true; out.push(`<li>${inline(item[1])}</li>`); continue; }
+          if (list) { out.push('</ul>'); list = false; }
+          const heading = /^#{1,6} (.*)/.exec(line);
+          if (heading) out.push(`<h4>${inline(heading[1])}</h4>`);
+          else if (line.trim()) out.push(`<p>${inline(line)}</p>`);
+        }
+        flushTable();
+        if (list) out.push('</ul>');
+        return out.join('');
+      }
+
+      async function loadReleases() {
+        const list = $('#release-list');
+        let releases;
+        try {
+          const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=20`, { headers: { Accept: 'application/vnd.github+json' } });
+          if (!response.ok) throw new Error(response.status);
+          releases = (await response.json()).filter((release) => !release.draft);
+        } catch {
+          list.innerHTML = `<div class="empty">Couldn't reach GitHub just now. See <a href="https://github.com/${REPO}/releases">all releases on GitHub</a>.</div>`;
+          return;
+        }
+        if (!releases.length) {
+          list.innerHTML = '<div class="empty">The first release is on its way. Meanwhile, <a href="app/">open Spatial Desktop in your browser</a>.</div>';
+          document.querySelectorAll('.file[data-asset]').forEach((link) => {
+            link.href = `https://github.com/${REPO}/releases`;
+            link.querySelector('small').textContent = 'coming soon';
+          });
+          if (os !== 'web') primary.href = '#releases';
+          return;
+        }
+
+        // Latest stable release: sizes on the download buttons, version in the hero.
+        const latest = releases.find((release) => !release.prerelease) ?? releases[0];
+        const assets = new Map(latest.assets.map((asset) => [asset.name, asset]));
+        $('#version-chip').textContent = `${latest.name || latest.tag_name} · ${date(latest.published_at)}`;
+        document.querySelectorAll('.file[data-asset]').forEach((link) => {
+          const asset = assets.get(link.dataset.asset);
+          link.href = asset ? asset.browser_download_url : `https://github.com/${REPO}/releases/latest`;
+          if (asset) link.querySelector('small').textContent += ` · ${size(asset.size)}`;
+        });
+        const mine = primaryAsset[os] && assets.get(primaryAsset[os]);
+        if (mine) {
+          primary.href = mine.browser_download_url;
+          $('#meta').innerHTML = `${escape(latest.tag_name)} · ${escape(mine.name)} · ${size(mine.size)} · <a href="#download">other platforms</a>`;
+        }
+
+        list.innerHTML = releases
+          .map((release) => {
+            const files = release.assets
+              .map((asset) => `<a href="${escape(asset.browser_download_url)}">${escape(asset.name)} · ${size(asset.size)}</a>`)
+              .join('');
+            return `<article class="release">
+              <header>
+                <h3>${escape(release.name || release.tag_name)}</h3>
+                <span class="tag${release.prerelease ? ' pre' : ''}">${release.prerelease ? 'Pre-release' : release === latest ? 'Latest' : escape(release.tag_name)}</span>
+                <time datetime="${escape(release.published_at)}">${date(release.published_at)}</time>
+                <a href="${escape(release.html_url)}">Notes on GitHub</a>
+              </header>
+              <div class="notes">${markdown(release.body || '')}</div>
+              <div class="assets">${files}</div>
+            </article>`;
+          })
+          .join('');
+      }
+      // Until the API answers, the buttons go to the latest release's files.
+      document.querySelectorAll('.file[data-asset]').forEach((link) => (link.href = LATEST + link.dataset.asset));
+      if (primaryAsset[os]) primary.href = LATEST + primaryAsset[os];
+      loadReleases();
+
+      // ---- a small neural network drifting behind the hero ----
+      (() => {
+        const canvas = $('#network');
+        const g = canvas.getContext('2d');
+        const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        let nodes = [], w = 0, h = 0, dpr = 1;
+        const resize = () => {
+          dpr = Math.min(devicePixelRatio || 1, 2);
+          w = canvas.clientWidth; h = canvas.clientHeight;
+          canvas.width = w * dpr; canvas.height = h * dpr;
+          const count = Math.round(Math.min(90, (w * h) / 16000));
+          nodes = Array.from({ length: count }, () => ({
+            x: Math.random() * w, y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.15, vy: (Math.random() - 0.5) * 0.15,
+            hue: Math.random() < 0.7 ? '95,225,255' : '255,106,213', phase: Math.random() * 6.28,
+          }));
+        };
+        const frame = (t) => {
+          g.setTransform(dpr, 0, 0, dpr, 0, 0);
+          g.clearRect(0, 0, w, h);
+          for (const n of nodes) {
+            if (!still) { n.x += n.vx; n.y += n.vy; }
+            if (n.x < 0 || n.x > w) n.vx *= -1;
+            if (n.y < 0 || n.y > h) n.vy *= -1;
+          }
+          for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+              const a = nodes[i], b = nodes[j];
+              const d = Math.hypot(a.x - b.x, a.y - b.y);
+              if (d > 140) continue;
+              const pulse = still ? 0 : Math.max(0, Math.sin(t / 900 + a.phase + b.phase)) ** 12;
+              g.strokeStyle = `rgba(${a.hue},${(1 - d / 140) * (0.12 + 0.5 * pulse)})`;
+              g.lineWidth = 1;
+              g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+            }
+          }
+          for (const n of nodes) {
+            const fire = still ? 0 : Math.max(0, Math.sin(t / 700 + n.phase * 3)) ** 30;
+            g.fillStyle = `rgba(${n.hue},${0.35 + 0.65 * fire})`;
+            g.beginPath(); g.arc(n.x, n.y, 1.4 + 2 * fire, 0, 6.28); g.fill();
+          }
+          if (!still) requestAnimationFrame(frame);
+        };
+        addEventListener('resize', resize);
+        resize();
+        requestAnimationFrame(frame);
+      })();
+    </script>
+  </body>
+</html>

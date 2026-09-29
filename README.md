@@ -8,6 +8,8 @@ Built for [Omarchy](https://omarchy.org) on Hyprland with Meta's [Immersive Web 
 
 <img src="docs/images/hero.jpg" alt="Three panels in an arc — a terminal running fastfetch, Hyprland itself, and Neovim — in front of a glowing neural core, with the control bar below" width="100%">
 
+### [⬇ Download](https://cheesiq.github.io/spatial-desktop/) · [Open in your browser](https://cheesiq.github.io/spatial-desktop/app/) · [Releases](https://github.com/Cheesiq/spatial-desktop/releases)
+
 </div>
 
 ---
@@ -75,6 +77,22 @@ Everything in the scene is generated in code and animated in shaders. There are 
 
 ---
 
+## Download
+
+Get it from the **[download page](https://cheesiq.github.io/spatial-desktop/)**, or straight from the [latest release](https://github.com/Cheesiq/spatial-desktop/releases/latest):
+
+| Platform | Download | Notes |
+| --- | --- | --- |
+| **Linux** | [AppImage](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-linux-x86_64.AppImage) · [.deb](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-linux-amd64.deb) | Every feature on Hyprland (Omarchy). `chmod +x` the AppImage and run it. |
+| **Windows 10/11** | [Installer](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-win-x64-setup.exe) | Not code-signed yet: *More info → Run anyway*. |
+| **macOS 12+** | [Disk image](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-mac-universal.dmg) | Universal. Not notarized yet: *right-click → Open* the first time. |
+| **Android 7+ / Meta Quest** | [APK](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-android.apk) | Offline app. On Quest, sideload it (it runs as a 2D window). |
+| **Web / VR headsets** | [Open in your browser](https://cheesiq.github.io/spatial-desktop/app/) | Nothing to install. Real VR in the Quest Browser and other WebXR browsers. |
+
+Every build contains the whole scene. The desktop features — the Hyprland panel, the Windows VM and launching apps into the scene — need Linux with Hyprland. Everywhere else, the app offers only what the device supports (window panels where the OS allows screen capture, VR where a WebXR headset is available).
+
+The rest of this README covers running from source, which is how you develop it.
+
 ## Requirements
 
 | | |
@@ -116,6 +134,13 @@ npm run open            # or: bin/spatial-desktop
 ```
 
 It opens at `http://localhost:5173` in its own Chromium profile, separate from your everyday browser.
+
+To run the production build instead of the dev server:
+
+```bash
+npm run build && npm start      # http://127.0.0.1:5174
+npm run desktop                 # the desktop app (Electron), from source
+```
 
 > [!TIP]
 > Bind it to a key in `~/.config/hypr/bindings.lua` to open it like any other app:
@@ -205,28 +230,49 @@ Either way, the render resolution adapts between 0.75× and 2× to hold about 60
 | --- | --- |
 | `src/index.ts` | App wiring: control bar, shortcuts, launcher tiles |
 | `src/panels.ts` | Panels: layouts, dragging, focus, input routing |
-| `src/hyprland.ts` · `server/hyprland.ts` | The Hyprland panel (page side and dev-server side) |
+| `src/hyprland.ts` · `server/hyprland.ts` | The Hyprland panel (page side and server side) |
 | `src/vnc.ts` · `src/vm.ts` | noVNC plumbing, and the Windows VM |
 | `src/capture.ts` | Window capture through the desktop portal |
 | `src/environment.ts` | The neural interface scene |
 | `src/launcher.ts` | The 3D launcher dock |
 | `src/music.ts` · `src/sfx.ts` | Generative ambient music and UI sounds |
 | `src/quality.ts` | GPU tiering and adaptive resolution |
+| `src/capabilities.ts` · `server/features.ts` | Which features this install has, and the server side of each |
+| `server/main.ts` | The production server (used by the desktop app and `npm start`) |
 | `server/apps.ts` | The launcher's app allow-list |
-| `vite.config.ts` | Dev server plugins: VM proxy, launcher, Hyprland |
+| `vite.config.ts` | The dev server, mounting the same features |
+| `electron/` · `electron-builder.yml` | The desktop app and its packaging |
+| `android/` · `capacitor.config.json` | The Android app (Capacitor) |
+| `site/` | The download and releases page (GitHub Pages) |
+| `.github/workflows/` | Release builds for every platform, and the Pages deploy |
 | `scripts/` | End-to-end tests over the Chrome DevTools Protocol |
 
 ### Development
 
 ```bash
-npm run typecheck   # tsc
-npm run build       # typecheck + production build
+npm run typecheck      # tsc
+npm run build          # typecheck, web build (dist/) and server bundle (dist-server/)
+npm run dist:desktop   # desktop packages for this OS, in release/
+npm run dist:android   # unsigned APK (needs JDK 21 and the Android SDK)
 
 # End-to-end tests drive a separate headless Chromium over CDP:
 chromium --headless=new --remote-debugging-port=9224 --user-data-dir=/tmp/sd-test http://localhost:5173 &
 CDP_PORT=9224 node scripts/launcher-test.mjs /tmp
 CDP_PORT=9224 node scripts/hyprland-test.mjs /tmp   # moves your real cursor for a moment
 ```
+
+---
+
+### Releasing
+
+Push a version tag and GitHub Actions builds every platform and publishes the release; the download page picks it up automatically:
+
+```bash
+npm version 1.1.0 --no-git-tag-version && git commit -am "Release 1.1.0"
+git tag v1.1.0 && git push origin main v1.1.0
+```
+
+APKs are signed with the key in the `ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` secrets. Keep a backup of that key: an app signed with a different key can't update an existing install.
 
 ---
 

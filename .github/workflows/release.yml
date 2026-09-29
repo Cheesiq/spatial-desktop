@@ -1,0 +1,146 @@
+# Builds Spatial Desktop for every platform. Pushing a tag like v1.2.3
+# publishes a GitHub Release with the files the download page links to:
+#
+#   Spatial-Desktop-linux-x86_64.AppImage   Spatial-Desktop-linux-amd64.deb
+#   Spatial-Desktop-win-x64-setup.exe       Spatial-Desktop-mac-universal.dmg
+#   Spatial-Desktop-android.apk
+#
+# Run it by hand (Actions → Release → Run workflow) to build them as
+# workflow artifacts without releasing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, os: ubuntu-latest, args: --linux AppImage deb }
+          - { name: Windows, os: windows-latest, args: --win nsis }
+          - { name: macOS, os: macos-latest, args: --mac dmg }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm pkg set version="${GITHUB_REF_NAME#v}"
+      - run: npm run build
+      - name: Package
+        run: npx electron-builder ${{ matrix.args }} --publish never
+        env:
+          # Unsigned builds: don't go looking for a signing identity.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.name }}
+          path: |
+            release/Spatial-Desktop-*.AppImage
+            release/Spatial-Desktop-*.deb
+            release/Spatial-Desktop-*.exe
+            release/Spatial-Desktop-*.dmg
+          if-no-files-found: error
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - name: Version from the tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else version="$(node -p 'require("./package.json").version')"; fi
+          IFS=. read -r major minor patch <<< "${version%%-*}"
+          echo "VERSION_NAME=$version" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( major * 10000 + minor * 100 + patch ))" >> "$GITHUB_ENV"
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Sign
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > release.p12
+          else
+            # Forks without the secret still get an installable (throwaway-signed) APK.
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set; signing with a throwaway key"
+            KEYSTORE_PASSWORD=throwaway
+            keytool -genkeypair -keystore release.p12 -storetype PKCS12 -storepass "$KEYSTORE_PASSWORD" \
+              -alias release -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Spatial Desktop"
+          fi
+          "$apksigner" sign --ks release.p12 --ks-type PKCS12 --ks-pass env:KEYSTORE_PASSWORD \
+            --out Spatial-Desktop-android.apk android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$apksigner" verify --print-certs Spatial-Desktop-android.apk
+          rm release.p12
+      - uses: actions/upload-artifact@v7
+        with:
+          name: android
+          path: Spatial-Desktop-android.apk
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum Spatial-Desktop-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          **Download page:** https://cheesiq.github.io/spatial-desktop/
+
+          | Platform | File |
+          | --- | --- |
+          | Linux (any distro) | `Spatial-Desktop-linux-x86_64.AppImage` |
+          | Debian / Ubuntu | `Spatial-Desktop-linux-amd64.deb` |
+          | Windows 10 / 11 | `Spatial-Desktop-win-x64-setup.exe` |
+          | macOS 12+ (Apple silicon and Intel) | `Spatial-Desktop-mac-universal.dmg` |
+          | Android 7+ and Meta Quest | `Spatial-Desktop-android.apk` |
+
+          The Hyprland panel, Windows VM and app launcher need Linux with Hyprland (Omarchy); other platforms get the scene and window panels where the OS allows capture. For VR, open the web version in a WebXR browser such as the Quest Browser. Builds are unsigned by Apple and Microsoft: see the download page for first-launch steps.
+          EOF
+          gh release create "$GITHUB_REF_NAME" artifacts/* \
+            --title "Spatial Desktop ${GITHUB_REF_NAME#v}" \
+            --notes-file notes.md --generate-notes

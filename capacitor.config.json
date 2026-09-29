@@ -1,0 +1,10 @@
+{
+  "appId": "io.github.cheesiq.spatialdesktop",
+  "appName": "Spatial Desktop",
+  "webDir": "dist",
+  "backgroundColor": "#05060c",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
