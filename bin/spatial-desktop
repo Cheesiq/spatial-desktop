@@ -1,0 +1,23 @@
+#!/bin/bash
+# Open Spatial Desktop as a native-Wayland Chromium app window.
+# A separate profile keeps it out of the main (X11, per chromium-flags.conf)
+# Chromium process, so these flags actually apply and screen capture goes
+# through PipeWire and xdg-desktop-portal-hyprland.
+url="${1:-http://localhost:5173}"
+# SPATIAL_DEBUG=1 exposes Chrome DevTools Protocol on localhost:9222.
+debug=()
+[[ -n $SPATIAL_DEBUG ]] && debug=(--remote-debugging-port=9222)
+# --force-device-scale-factor=1: under Hyprland's fractional scaling Chromium
+# otherwise settles on a ~1.016 device scale and mis-draws the page after the
+# window is resized. The value multiplies the compositor's scale, so 1 gives
+# exactly 1.25 on a 125% display.
+exec setsid uwsm-app -- chromium \
+  --user-data-dir="$HOME/.local/state/spatial-desktop/chromium" \
+  --class=spatial-desktop \
+  --ozone-platform=wayland \
+  --force-device-scale-factor=1 \
+  --enable-features=WebRTCPipeWireCapturer \
+  --ignore-gpu-blocklist \
+  --autoplay-policy=no-user-gesture-required \
+  "${debug[@]}" \
+  --app="$url"
