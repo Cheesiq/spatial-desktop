@@ -100,7 +100,7 @@
       }
 
       /* ---- sections ---- */
-      section { padding: 64px 0; }
+      section { padding: 64px 0; scroll-margin-top: 64px; }
       h2 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); letter-spacing: -0.02em; margin: 0 0 8px; }
       .sub { color: var(--muted); margin: 0 0 32px; max-width: 70ch; }
 
@@ -121,9 +121,10 @@
       .file {
         display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px;
         background: rgb(255 255 255 / 0.03); border: 1px solid var(--outline); color: var(--text); text-decoration: none; font-weight: 600; font-size: 14.5px;
+        white-space: nowrap;
       }
       .file:hover { border-color: var(--primary); background: rgb(208 188 255 / 0.06); }
-      .file small { color: var(--muted); font-weight: 400; white-space: nowrap; }
+      .file small { color: var(--muted); font-weight: 400; white-space: normal; text-align: right; min-width: 0; }
       details { font-size: 14px; color: var(--muted); }
       details summary { cursor: pointer; color: var(--text); }
       details ol, details ul { padding-left: 1.2em; margin: 8px 0 0; }
@@ -158,6 +159,7 @@
       .notes ul { margin: 6px 0; padding-left: 1.2em; }
       .notes table { min-width: 0; font-size: 13.5px; margin: 8px 0; }
       .notes td, .notes th { padding: 6px 10px; text-align: left; }
+      .notes code { overflow-wrap: anywhere; }
       .assets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
       .assets a { font-size: 13.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--outline); color: var(--text); text-decoration: none; }
       .assets a:hover { border-color: var(--primary); }
@@ -351,7 +353,9 @@
       const LATEST = `https://github.com/${REPO}/releases/latest/download/`;
       const $ = (selector) => document.querySelector(selector);
       const escape = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-      const size = (bytes) => (bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`);
+      const size = (bytes) =>
+        // A no-break space keeps the number and its unit on one line.
+        bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)}\u00a0GB` : bytes >= 1e6 ? `${Math.round(bytes / 1e6)}\u00a0MB` : `${Math.max(1, Math.round(bytes / 1e3))}\u00a0KB`;
       const date = (iso) => new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
 
       // ---- which platform is this? ----
@@ -361,6 +365,8 @@
         if (/OculusBrowser|Quest/i.test(ua)) return 'web';
         if (/Android/i.test(ua)) return 'android';
         if (/iPhone|iPad|iPod/i.test(ua)) return 'web';
+        // iPadOS asks for the desktop site and reports itself as a Mac.
+        if (platform.includes('mac') && navigator.maxTouchPoints > 1) return 'web';
         if (platform.includes('win')) return 'windows';
         if (platform.includes('mac')) return 'mac';
         if (platform.includes('linux') || /Linux|X11/i.test(ua)) return 'linux';
@@ -369,7 +375,10 @@
       const os = detectOs();
       const labels = { linux: 'Download for Linux', windows: 'Download for Windows', mac: 'Download for macOS', android: 'Download for Android', web: 'Open in your browser' };
       const primaryAsset = { linux: 'Spatial-Desktop-linux-x86_64.AppImage', windows: 'Spatial-Desktop-win-x64-setup.exe', mac: 'Spatial-Desktop-mac-universal.dmg', android: 'Spatial-Desktop-android.apk' };
-      document.querySelector(`.card[data-os="${os}"]`)?.classList.add('detected');
+      const detected = document.querySelector(`.card[data-os="${os}"]`);
+      detected?.classList.add('detected');
+      // On narrow screens the cards stack, so put this device's card first.
+      if (detected && matchMedia('(max-width: 600px)').matches) detected.parentElement.prepend(detected);
       const primary = $('#primary-download');
       primary.querySelector('span').textContent = labels[os];
       if (os === 'web') primary.href = 'app/';
@@ -439,6 +448,7 @@
           if (asset) link.querySelector('small').textContent += ` · ${size(asset.size)}`;
         });
         const mine = primaryAsset[os] && assets.get(primaryAsset[os]);
+        if (primaryAsset[os] && !mine) primary.href = '#download';
         if (mine) {
           primary.href = mine.browser_download_url;
           $('#meta').innerHTML = `${escape(latest.tag_name)} · ${escape(mine.name)} · ${size(mine.size)} · <a href="#download">other platforms</a>`;
@@ -472,11 +482,18 @@
         const canvas = $('#network');
         const g = canvas.getContext('2d');
         const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
-        let nodes = [], w = 0, h = 0, dpr = 1;
+        let nodes = [], w = 0, h = 0, dpr = 1, visible = true, running = false;
         const resize = () => {
+          const width = canvas.clientWidth, height = canvas.clientHeight;
           dpr = Math.min(devicePixelRatio || 1, 2);
-          w = canvas.clientWidth; h = canvas.clientHeight;
-          canvas.width = w * dpr; canvas.height = h * dpr;
+          canvas.width = width * dpr; canvas.height = height * dpr;
+          // Phones resize as the address bar slides away: keep the network, just stretch it.
+          if (nodes.length && width === w) {
+            for (const n of nodes) n.y *= height / h;
+            h = height;
+            return;
+          }
+          w = width; h = height;
           const count = Math.round(Math.min(90, (w * h) / 16000));
           nodes = Array.from({ length: count }, () => ({
             x: Math.random() * w, y: Math.random() * h,
@@ -508,11 +525,17 @@
             g.fillStyle = `rgba(${n.hue},${0.35 + 0.65 * fire})`;
             g.beginPath(); g.arc(n.x, n.y, 1.4 + 2 * fire, 0, 6.28); g.fill();
           }
-          if (!still) requestAnimationFrame(frame);
+          if (!still && visible && !document.hidden) requestAnimationFrame(frame);
+          else running = false;
         };
-        addEventListener('resize', resize);
+        const start = () => { if (!running) { running = true; requestAnimationFrame(frame); } };
+        // Only animate while the hero is on screen and the tab is showing.
+        new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; if (visible) start(); }).observe(canvas);
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) start(); });
+        // Resizing clears the canvas, so draw again (the only redraw when motion is reduced).
+        addEventListener('resize', () => { resize(); start(); });
         resize();
-        requestAnimationFrame(frame);
+        start();
       })();
     </script>
   </body>
