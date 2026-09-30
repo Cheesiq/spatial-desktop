@@ -70,8 +70,20 @@ export const desktop = {
   panels: new Map<Entity, PanelRecord>(),
   layout: 'arc' as Layout,
   focused: null as Entity | null,
+  /** Set while something else (the game) has the scene. */
+  hidden: false,
   onChange: () => {},
 };
+
+/** Hide every panel and stop it taking pointer events, e.g. while the game has the scene. */
+export function setPanelsHidden(hidden: boolean): void {
+  desktop.hidden = hidden;
+  for (const [entity, record] of desktop.panels) {
+    record.root.visible = !hidden;
+    if (hidden) entity.removeComponent(RayInteractable);
+    else if (!entity.hasComponent(RayInteractable)) entity.addComponent(RayInteractable);
+  }
+}
 
 export function setLayout(layout: Layout): void {
   desktop.layout = layout;
@@ -94,7 +106,8 @@ export function addPanel(world: World, source: PanelSource): Entity {
 
   const entity = world.createTransformEntity(root);
   entity.addComponent(Panel);
-  entity.addComponent(RayInteractable);
+  if (desktop.hidden) root.visible = false;
+  else entity.addComponent(RayInteractable);
 
   const record: PanelRecord = {
     source,

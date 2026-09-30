@@ -106,6 +106,9 @@ export class Launcher {
 
   set visible(visible: boolean) {
     this.mesh.visible = visible;
+    // Hidden, it mustn't catch rays either (the game fires through it).
+    if (!visible) this.entity.removeComponent(RayInteractable);
+    else if (!this.entity.hasComponent(RayInteractable)) this.entity.addComponent(RayInteractable);
     if (!visible) this.hovered = this.pressed = null;
   }
 
