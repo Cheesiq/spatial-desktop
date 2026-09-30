@@ -42,6 +42,15 @@
         box-shadow: var(--md-elevation-3); max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
       }
       #status:empty { display: none; }
+      /* Snackbar with an action: a newer Android release is out (src/update.ts). */
+      #update {
+        display: flex; align-items: center; gap: 4px; padding: 6px 8px 6px 16px; border-radius: 4px; font-size: 14px;
+        background: var(--md-inverse-surface); color: var(--md-inverse-on-surface); box-shadow: var(--md-elevation-3);
+        max-width: min(560px, calc(100vw - 32px)); box-sizing: border-box;
+      }
+      #update span { flex: 1; padding-right: 8px; }
+      #update a, #update button { color: var(--md-inverse-primary); font-weight: 500; text-decoration: none; padding: 10px 12px; border-radius: 20px; }
+      #update button { color: var(--md-inverse-on-surface); }
       #status.active::before { content: '⌨  '; color: var(--md-inverse-primary); font-weight: 500; }
 
       /* Input chips for open panels */
@@ -232,6 +241,7 @@
     <div id="scene-container"></div>
     <div id="hud">
       <div id="hud-body">
+        <div id="update" role="status" hidden><span></span><a target="_blank" rel="noopener">Download</a><button type="button" aria-label="Dismiss">✕</button></div>
         <div id="status" role="status"></div>
         <ul id="panels"></ul>
         <div id="meta"></div>

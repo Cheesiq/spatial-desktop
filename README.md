@@ -109,6 +109,8 @@ Get it from the **[download page](https://cheesiq.github.io/spatial-desktop/)**,
 
 Every build contains the whole scene. The desktop features — the Hyprland panel, the Windows VM and launching apps into the scene — need Linux with Hyprland. Everywhere else, the app offers only what the device supports (window panels where the OS allows screen capture, VR where a WebXR headset is available).
 
+**Updates.** On Windows and Linux (AppImage and .deb) the app updates itself: it checks for a new release at launch and every six hours, downloads it in the background and installs it when you quit (a notification offers to restart right away). macOS builds aren't code-signed, which macOS requires for self-updates, so the Mac app notifies you and links to the download page. The Android app shows a banner with the new APK. Set `SPATIAL_NO_UPDATES=1` to turn update checks off on desktop.
+
 The rest of this README covers running from source, which is how you develop it.
 
 ## Requirements

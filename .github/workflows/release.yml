@@ -1,5 +1,6 @@
 # Builds Spatial Desktop for every platform. Pushing a tag like v1.2.3
-# publishes a GitHub Release with the files the download page links to:
+# publishes a GitHub Release with the files the download page links to
+# (plus the latest*.yml manifests and blockmaps the desktop apps update from):
 #
 #   Spatial-Desktop-linux-x86_64.AppImage   Spatial-Desktop-linux-amd64.deb
 #   Spatial-Desktop-win-x64-setup.exe       Spatial-Desktop-mac-universal.dmg
@@ -73,6 +74,8 @@ jobs:
             release/Spatial-Desktop-*.deb
             release/Spatial-Desktop-*.exe
             release/Spatial-Desktop-*.dmg
+            release/latest*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   android:
@@ -144,7 +147,7 @@ jobs:
           merge-multiple: true
       - name: Checksums
         working-directory: artifacts
-        run: sha256sum Spatial-Desktop-* > SHA256SUMS.txt && cat SHA256SUMS.txt
+        run: sha256sum Spatial-Desktop-*.{AppImage,deb,exe,dmg,apk} > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}

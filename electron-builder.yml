@@ -15,7 +15,13 @@ files:
   - package.json
 # Stable names, so https://github.com/Cheesiq/spatial-desktop/releases/latest/download/<name> always works.
 artifactName: Spatial-Desktop-${os}-${arch}.${ext}
-publish: null
+# Where electron-updater looks for new versions. CI still builds with
+# --publish never; the release job uploads the files, including the
+# latest*.yml manifests and blockmaps this makes electron-builder write.
+publish:
+  provider: github
+  owner: Cheesiq
+  repo: spatial-desktop
 
 linux:
   target:
