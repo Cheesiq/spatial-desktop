@@ -29,7 +29,10 @@ import { cosmos } from '../environment.js';
 import { GameAudio } from './audio.js';
 import { animateBot, type Bot, type BotKind, buildBot, buildNode } from './bots.js';
 import { Beam, type Bolt, BoltRenderer, COLORS, glowSprite, Particles, Transients, Warp } from './fx.js';
+import { Pads, type PadState } from './gamepad.js';
+import { Gyro } from './gyro.js';
 import { type Blip, type HudState, type Phase, ScreenHud, XrHud } from './hud.js';
+import { TouchControls } from './touch.js';
 
 /**
  * ROGUE PROTOCOL — a wave shooter played from Spatial Desktop's platform.
@@ -39,7 +42,8 @@ import { type Blip, type HudState, type Phase, ScreenHud, XrHud } from './hud.js
  * charges that clear the sky. Clear a wave and the platform jumps to the next
  * sector of the universe (the sky turns and re-tints under a hyperspace warp).
  *
- * The same game runs flat (mouse look with pointer lock, WASD, touch) and in
+ * The same game runs flat (mouse look with pointer lock, WASD, on-screen touch
+ * controls, or a game controller) and in
  * VR (a blaster in each hand, grip for the shield, stick to move).
  */
 
@@ -224,7 +228,12 @@ export class GameSystem extends createSystem({}) {
   private shielding = false;
   private readonly cursor = new Vector2();
   private cursorSeen = false;
-  private touchPoint: { id: number; x: number; y: number } | null = null;
+  private touchUi: TouchControls | null = null;
+  private readonly pads = new Pads();
+  private readonly gyro = new Gyro();
+  /** Look-around aiming: the yaw offset from where the phone points to the view (null: re-centre). */
+  private gyroAhead: number | null = null;
+  private pad: PadState | null = null;
   private saved: { position: Vector3; quaternion: Quaternion; fov: number; player: Vector3; playerQuat: Quaternion } | null = null;
   private readonly baseFov = { value: 50 };
   private readonly listeners: Array<() => void> = [];
@@ -275,6 +284,14 @@ export class GameSystem extends createSystem({}) {
       quit: () => this.close(),
       nova: () => this.fireNova(),
     });
+    this.touchUi ??= new TouchControls({
+      nova: () => this.fireNova(),
+      pause: () => this.pause(),
+      gyro: () => (this.gyro.enabled = !this.gyro.enabled),
+    });
+    this.gyro.start();
+    // Phones and tablets: start in touch mode, so ENGAGE doesn't ask for the mouse.
+    this.touch ||= matchMedia('(any-pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
     this.active = true;
     host.enter();
     this.audio.enabled = host.sounds();
@@ -315,6 +332,8 @@ export class GameSystem extends createSystem({}) {
     this.active = false;
     this.clearArena();
     for (const off of this.listeners.splice(0)) off();
+    if (this.touchUi) this.touchUi.active = false;
+    this.gyro.stop();
     if (document.pointerLockElement) document.exitPointerLock();
     this.audio.stopMusic(0.4);
     this.scene.remove(this.root, this.xrHud.mesh);
@@ -375,6 +394,8 @@ export class GameSystem extends createSystem({}) {
   engage(): void {
     if (!this.active) return;
     this.requestLock();
+    // iOS only shares the gyroscope after asking, from a tap like this one.
+    if (this.touch) this.gyro.requestPermission();
     for (const bot of this.bots) this.explode(bot, false);
     this.clearArena();
     this.resetRun();
@@ -396,7 +417,7 @@ export class GameSystem extends createSystem({}) {
   }
 
   private requestLock(): void {
-    if (this.renderer.xr.isPresenting || this.touch || this.autopilot) return;
+    if (this.renderer.xr.isPresenting || this.touch || this.pads.inUse || this.autopilot) return;
     const canvas = this.renderer.domElement;
     try {
       const request = canvas.requestPointerLock() as unknown as Promise<void> | undefined;
@@ -446,7 +467,7 @@ export class GameSystem extends createSystem({}) {
       this.firing = this.shielding = false;
     });
     on(canvas, 'mousedown', (event) => {
-      if (this.phase !== 'playing') return;
+      if (this.phase !== 'playing' || this.touch) return;
       if (!this.locked && !this.cursorSeen) this.requestLock();
       if (event.button === 0) this.firing = true;
       if (event.button === 2) this.shielding = true;
@@ -471,28 +492,14 @@ export class GameSystem extends createSystem({}) {
       if (!this.locked && this.wasLocked && this.phase === 'playing') this.pause();
       if (!this.locked) this.wasLocked = this.phase === 'paused' ? this.wasLocked : false;
     });
-    on(canvas, 'pointerdown', (event) => {
-      if (event.pointerType !== 'touch') return;
-      this.touch = true;
-      if (this.phase !== 'playing') return;
-      this.touchPoint = { id: event.pointerId, x: event.clientX, y: event.clientY };
-      this.firing = true;
-    });
-    on(canvas, 'pointermove', (event) => {
-      const t = this.touchPoint;
-      if (!t || t.id !== event.pointerId) return;
-      this.yaw += (event.clientX - t.x) * 0.005;
-      this.pitch = Math.min(1.45, Math.max(-1.2, this.pitch + (event.clientY - t.y) * 0.005));
-      t.x = event.clientX;
-      t.y = event.clientY;
-    });
-    const endTouch = (event: AnyEvent) => {
-      if (this.touchPoint?.id !== event.pointerId) return;
-      this.touchPoint = null;
-      this.firing = false;
-    };
-    on(window, 'pointerup', endTouch);
-    on(window, 'pointercancel', endTouch);
+    // Whatever was used last decides the mode: touch shows the on-screen
+    // controls; the mouse brings back pointer-lock aiming.
+    on(window, 'pointerdown', (event) => {
+      if (event.pointerType === 'touch') this.touch = true;
+      else if (event.pointerType === 'mouse') this.touch = false;
+      else return;
+      this.pads.inUse = false;
+    }, true);
   }
 
   // ---- building ---------------------------------------------------------------------
@@ -682,6 +689,7 @@ export class GameSystem extends createSystem({}) {
     const xr = this.renderer.xr.isPresenting;
     const camera = this.camera as PerspectiveCamera;
 
+    this.readControllers(xr, dt);
     this.readHead(xr);
     if (!xr) this.driveScreenCamera(dt, camera);
     else this.driveXr(dt);
@@ -721,6 +729,56 @@ export class GameSystem extends createSystem({}) {
     }
   }
 
+  /** Game controller buttons, and whether the touch controls should show. */
+  private readControllers(xr: boolean, dt: number): void {
+    this.pad = xr ? null : this.pads.poll();
+    const pressed = this.pad?.pressed;
+    if (pressed) {
+      const menu = this.phase === 'title' || this.phase === 'over';
+      if (pressed.start) {
+        if (this.phase === 'playing') this.pause();
+        else if (this.phase === 'paused') this.resume();
+        else this.engage();
+      } else if (pressed.a && menu) this.engage();
+      else if (pressed.a && this.phase === 'paused') this.resume();
+      else if (pressed.b && this.phase === 'paused') this.resume();
+      else if (pressed.b && menu) return this.close();
+      if (pressed.nova && this.phase === 'playing') this.fireNova();
+    }
+    const touchUi = this.touchUi!;
+    touchUi.active = !xr && this.phase === 'playing' && this.touch && !this.pads.inUse;
+    touchUi.showGyro(this.gyro.available, this.gyro.enabled);
+    touchUi.update(dt);
+  }
+
+  /**
+   * A gentle pull toward a bot near the crosshair, for thumbs and sticks
+   * (never the mouse). Strongest at the centre, gone by ~5 degrees out.
+   */
+  private aimAssist(dt: number): void {
+    const cone = 0.09;
+    let best: Bot | null = null;
+    let bestAngle = cone;
+    for (const bot of this.bots) {
+      if (bot.dead || bot.passive) continue;
+      const to = v1.subVectors(bot.group.position, this.head);
+      const d = to.length();
+      if (d > 70) continue;
+      const angle = Math.acos(Math.min(1, to.dot(this.headForward) / d));
+      if (angle < bestAngle) {
+        bestAngle = angle;
+        best = bot;
+      }
+    }
+    if (!best) return;
+    const to = v1.subVectors(best.group.position, this.head).normalize();
+    const yaw = Math.atan2(-to.x, -to.z);
+    const pitch = Math.asin(Math.min(1, Math.max(-1, to.y)));
+    const pull = Math.min(1, dt * 3.2 * (1 - bestAngle / cone));
+    this.yaw += Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw)) * pull;
+    this.pitch += (pitch - this.pitch) * pull;
+  }
+
   private readHead(xr: boolean): void {
     const node = xr ? this.player.head : this.camera;
     node.getWorldPosition(this.head);
@@ -732,13 +790,43 @@ export class GameSystem extends createSystem({}) {
   private driveScreenCamera(dt: number, camera: PerspectiveCamera): void {
     if (!this.saved) return;
     // Cursor aim (no pointer lock): turn when the cursor nears the edge.
-    if (!this.locked && !this.touch && this.cursorSeen && this.phase === 'playing' && !this.autopilot) {
+    if (!this.locked && !this.touch && !this.pads.inUse && this.cursorSeen && this.phase === 'playing' && !this.autopilot) {
       const edge = (v: number) => Math.sign(v) * Math.max(0, Math.abs(v) - 0.7) / 0.3;
       this.yaw -= edge(this.cursor.x) * dt * 1.8;
       this.pitch = Math.min(1.45, Math.max(-1.2, this.pitch + edge(this.cursor.y) * dt * 1.2));
     }
     if (this.autopilot && this.phase !== 'paused') this.steerAutopilot(dt);
     else if (this.phase === 'title' || this.phase === 'over') this.yaw += dt * 0.05;
+
+    // Thumbs, sticks and the gyroscope.
+    const clampPitch = () => (this.pitch = Math.min(1.45, Math.max(-1.2, this.pitch)));
+    const lookAround = this.phase === 'playing' && this.touch && !this.pads.inUse && this.gyro.enabled ? this.gyro.view : null;
+    if (!lookAround) this.gyroAhead = null;
+    if (this.phase === 'playing') {
+      const drag = this.touchUi!.takeAim();
+      if (lookAround) {
+        // The view follows where the phone points. "Ahead" starts wherever you
+        // were looking, and a sideways drag turns it.
+        this.gyroAhead ??= this.yaw - lookAround.yaw;
+        this.gyroAhead -= drag.dx * 0.0055;
+        const follow = 1 - Math.exp(-dt * 30);
+        const yaw = lookAround.yaw + this.gyroAhead;
+        this.yaw += Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw)) * follow;
+        this.pitch += (Math.min(1.45, Math.max(-1.2, lookAround.pitch)) - this.pitch) * follow;
+      } else {
+        this.yaw -= drag.dx * 0.0055;
+        this.pitch -= drag.dy * 0.0055;
+      }
+      const aim = this.pad?.aim;
+      if (aim) {
+        // Squared response: fine control near the centre, fast turns at full tilt.
+        this.yaw -= Math.sign(aim.x) * aim.x * aim.x * 2.8 * dt;
+        this.pitch -= Math.sign(aim.y) * aim.y * aim.y * 2 * dt;
+      }
+      // No assist while the phone aims: it would pull the view off where the phone points.
+      if ((this.touch || this.pads.inUse) && !lookAround && !this.autopilot) this.aimAssist(dt);
+      clampPitch();
+    }
 
     // Walk the platform.
     if (this.phase === 'playing') {
@@ -747,9 +835,14 @@ export class GameSystem extends createSystem({}) {
       if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) move.z += 1;
       if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) move.x -= 1;
       if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) move.x += 1;
+      const touchMove = this.touchUi!.move;
+      move.x += touchMove.x + (this.pad?.move.x ?? 0);
+      move.z += touchMove.y + (this.pad?.move.y ?? 0);
       if (this.autopilot) move.x = Math.sin(this.clock * 0.9) * 0.8;
       if (move.lengthSq() > 0) {
-        move.normalize().applyAxisAngle(new Vector3(0, 1, 0), this.yaw).multiplyScalar(4.2 * dt);
+        // Analog input keeps its magnitude; keys and full tilt cap at walking speed.
+        if (move.lengthSq() > 1) move.normalize();
+        move.applyAxisAngle(new Vector3(0, 1, 0), this.yaw).multiplyScalar(4.2 * dt);
         this.player.position.add(move);
         this.clampToPlatform();
       }
@@ -822,7 +915,7 @@ export class GameSystem extends createSystem({}) {
 
     // Shields.
     const shieldWanted = {
-      screen: !xr && playing && (this.shielding || this.keys.has('ShiftLeft') || (this.autopilot && this.threatened())),
+      screen: !xr && playing && (this.shielding || this.keys.has('ShiftLeft') || this.touchUi!.shielding || (this.pad?.shield ?? false) || (this.autopilot && this.threatened())),
       left: xr && playing && (this.input.xr.gamepads.left?.getButtonPressed('xr-standard-squeeze') ?? false),
       right: xr && playing && (this.input.xr.gamepads.right?.getButtonPressed('xr-standard-squeeze') ?? false),
     };
@@ -867,14 +960,14 @@ export class GameSystem extends createSystem({}) {
     // Flat screen: aim through the crosshair (or the cursor), guns alternate.
     const camera = this.camera as PerspectiveCamera;
     camera.updateMatrixWorld();
-    if (this.locked || this.touch || this.autopilot || !this.cursorSeen) {
+    if (this.locked || this.touch || this.pads.inUse || this.autopilot || !this.cursorSeen) {
       this.aimDir.copy(this.headForward);
       this.aimFrom.copy(this.head);
     } else {
       this.aimFrom.copy(this.head);
       this.aimDir.set(this.cursor.x, this.cursor.y, 0.5).unproject(camera).sub(this.head).normalize();
     }
-    const wantsFire = this.firing || this.keys.has('KeyJ') || (this.autopilot && this.autopilotWantsFire());
+    const wantsFire = this.firing || this.keys.has('KeyJ') || this.touchUi!.firing || (this.pad?.fire ?? false) || (this.autopilot && this.autopilotWantsFire());
     const gun = this.screenGuns[this.nextScreenGun];
     if (!wantsFire || gun.cooldown > 0) return;
     this.nextScreenGun = (this.nextScreenGun + 1) % this.screenGuns.length;
@@ -914,6 +1007,7 @@ export class GameSystem extends createSystem({}) {
     this.transients.ring(this.chest, COLORS.player, 0.5, 30, 0.8, new Vector3(0, 1, 0), 0.8);
     this.shake = 1;
     this.audio.nova();
+    this.pads.rumble(1, 0.7, 450);
   }
 
   private updateNova(dt: number): void {
@@ -1291,6 +1385,7 @@ export class GameSystem extends createSystem({}) {
     this.shake = Math.min(1, this.shake + 0.5);
     this.invulnerable = 0.2;
     this.audio.hurt();
+    this.pads.rumble(0.5 + amount / 50, 0.8, 160);
     void from;
     if (this.hull <= 0) this.gameOver();
   }
@@ -1507,7 +1602,8 @@ export class GameSystem extends createSystem({}) {
       kills: this.kills,
       newBest: this.newBest,
       locked: this.locked,
-      touch: this.touch,
+      touch: this.touch && !this.pads.inUse,
+      pad: this.pads.inUse,
       autopilot: this.autopilot,
     };
   }

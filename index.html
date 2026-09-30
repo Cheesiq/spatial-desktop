@@ -185,11 +185,6 @@
       .rp-novas em { font-style: normal; opacity: 0.5; }
       .rp-overdrive { font-size: 13px; color: var(--rp-gold); letter-spacing: 0.2em; text-shadow: 0 0 10px var(--rp-gold); min-height: 1em; }
       .rp-radar { position: absolute; right: 28px; bottom: 28px; width: 200px; height: 200px; }
-      .rp-nova-btn { display: none; }
-      .rp.rp-touch.rp-playing .rp-nova-btn {
-        display: block; position: absolute; right: 36px; bottom: 250px; pointer-events: auto; width: 76px; height: 76px; border-radius: 50%;
-        font: 700 13px var(--rp-font); letter-spacing: 0.15em; color: #fff; background: rgba(120, 90, 255, 0.35); border: 2px solid var(--rp-violet);
-      }
       .rp-menu {
         position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
         background: radial-gradient(ellipse at center, rgba(3, 6, 16, 0.35), rgba(3, 6, 16, 0.8)); text-align: center; padding: 24px; box-sizing: border-box;
@@ -219,6 +214,67 @@
       .rp-btn.rp-primary:hover { background: #fff; }
       .rp-keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; max-width: 760px; font-size: 12px; letter-spacing: 0.08em; text-transform: none; color: rgba(234, 246, 255, 0.65); }
       .rp-keys b { color: var(--rp-ice); font-weight: 700; margin-right: 4px; }
+
+      /* On-screen touch controls (src/game/touch.ts). They fade out after a few
+         seconds without a touch; any touch brings them back. */
+      .rp-touchpad {
+        position: fixed; inset: 0; z-index: 2147483646; touch-action: none; user-select: none; -webkit-user-select: none;
+        -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; font-family: var(--rp-font, ui-monospace, monospace);
+        --rp-safe-r: max(20px, env(safe-area-inset-right, 0px)); --rp-safe-b: max(18px, env(safe-area-inset-bottom, 0px));
+      }
+      .rp-touchpad > * { transition: opacity 600ms ease; }
+      .rp-touchpad.rp-faded > * { opacity: 0; }
+      .rp-stick {
+        position: absolute; left: 0; top: 0; width: 0; height: 0; opacity: 0; pointer-events: none;
+      }
+      .rp-stick::before, .rp-knob {
+        content: ''; position: absolute; border-radius: 50%; transform: translate(-50%, -50%);
+      }
+      .rp-stick::before { left: 0; top: 0; width: 124px; height: 124px; border: 2px solid rgba(90, 216, 255, 0.45); background: rgba(10, 30, 50, 0.25); }
+      .rp-knob { left: 0; top: 0; width: 56px; height: 56px; margin: -28px 0 0 -28px; transform: none; background: rgba(90, 216, 255, 0.55); box-shadow: 0 0 18px rgba(90, 216, 255, 0.6); }
+      .rp-stick.rp-on { opacity: 1; }
+      .rp-touchpad.rp-faded .rp-stick.rp-on { opacity: 1; }
+      .rp-tbtn {
+        position: absolute; display: grid; place-items: center; align-content: center; gap: 2px; border-radius: 50%;
+        color: #eaf6ff; background: rgba(10, 30, 50, 0.35); border: 2px solid rgba(90, 216, 255, 0.55);
+        font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
+      }
+      .rp-tbtn svg { width: 42%; height: 42%; fill: currentColor; }
+      .rp-tbtn.rp-held { background: rgba(90, 216, 255, 0.45); transform: scale(0.94); }
+      .rp-t-fire { right: var(--rp-safe-r); bottom: var(--rp-safe-b); width: 92px; height: 92px; border-color: rgba(255, 77, 109, 0.8); background: rgba(80, 10, 25, 0.35); }
+      .rp-t-fire.rp-held { background: rgba(255, 77, 109, 0.5); }
+      .rp-t-shield { right: calc(var(--rp-safe-r) + 104px); bottom: var(--rp-safe-b); width: 66px; height: 66px; }
+      .rp-t-nova { right: calc(var(--rp-safe-r) + 12px); bottom: calc(var(--rp-safe-b) + 104px); width: 62px; height: 62px; border-color: rgba(184, 156, 255, 0.8); background: rgba(40, 20, 80, 0.35); }
+      .rp-t-pause { right: calc(var(--rp-safe-r) + 136px); top: max(14px, env(safe-area-inset-top, 0px)); width: 44px; height: 44px; }
+      .rp-t-pause span { display: none; }
+      .rp-t-gyro { right: calc(var(--rp-safe-r) + 190px); top: max(14px, env(safe-area-inset-top, 0px)); width: 44px; height: 44px; opacity: 0.55; }
+      .rp-t-gyro span { display: none; }
+      .rp-t-gyro.rp-lit { opacity: 1; color: #04111c; background: rgba(90, 216, 255, 0.85); }
+      .rp-touchpad.rp-faded .rp-t-gyro { opacity: 0; }
+
+      /* Touch layout: bars and radar move up, clear of the thumbs. */
+      .rp.rp-touch .rp-bars { top: 66px; bottom: auto; left: max(20px, env(safe-area-inset-left, 0px)); width: min(260px, 32vw); gap: 6px; }
+      .rp.rp-touch .rp-radar { top: 12px; bottom: auto; right: max(16px, env(safe-area-inset-right, 0px)); width: 110px; height: 110px; }
+      .rp.rp-touch .rp-best { display: none; }
+      .rp.rp-touch .rp-wave { position: absolute; left: 50%; transform: translateX(-50%); }
+      .rp.rp-touch .rp-row, .rp.rp-touch .rp-novas { font-size: 10px; }
+      /* Short screens (phones in landscape): a compact HUD and a menu that fits. */
+      @media (max-height: 520px) {
+        .rp-score { font-size: 26px; }
+        .rp-mult { font-size: 16px; }
+        .rp-top { top: 12px; }
+        .rp-banner { top: 22%; }
+        .rp-banner b { font-size: 30px; }
+        .rp-boss { top: 58px; }
+        .rp-menu { gap: 10px; justify-content: center; }
+        .rp-logo { font-size: clamp(36px, 13vh, 72px); }
+        .rp-title { font-size: 36px; }
+        .rp-final b { font-size: 36px; }
+        .rp-btn { padding: 11px 20px; font-size: 13px; }
+        .rp-btn.rp-primary { padding: 12px 32px; }
+        .rp-kicker, .rp-tag { font-size: 11px; }
+        .rp-keys { font-size: 11px; gap: 4px 12px; }
+      }
       @media (max-width: 640px) {
         .rp-score { font-size: 28px; }
         .rp-radar { width: 130px; height: 130px; right: 16px; bottom: 16px; }
