@@ -5,6 +5,7 @@
 import { app, BrowserWindow, desktopCapturer, Menu, session, shell } from 'electron';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startUpdates } from './updates.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -121,6 +122,7 @@ app.whenReady().then(async () => {
   server = await startServer({ root: join(here, '..', 'dist') });
   session.defaultSession.setDisplayMediaRequestHandler(pickSource, { useSystemPicker: true });
   await createWindow();
+  startUpdates();
   app.on('activate', () => BrowserWindow.getAllWindows().length || void createWindow());
 });
 

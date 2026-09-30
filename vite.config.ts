@@ -1,5 +1,6 @@
 import { iwsdkDev } from '@iwsdk/vite-plugin-dev';
 import { defineConfig, type Plugin } from 'vite';
+import { readFileSync } from 'node:fs';
 import { attachFeatures } from './server/features.js';
 
 const PORT = 5173;
@@ -42,6 +43,11 @@ export default defineConfig({
   esbuild: { target: 'esnext' },
   // Keep a single copy of three/uikit so IWSDK's instanceof checks hold.
   resolve: { dedupe: ['three', '@pmndrs/uikit'] },
+  // The Android build sets VERSION_NAME from the release tag (release.yml);
+  // desktop builds set package.json's version from it.
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.VERSION_NAME || JSON.parse(readFileSync('package.json', 'utf8')).version),
+  },
   optimizeDeps: {
     exclude: ['@babylonjs/havok'],
     include: ['three', '@pmndrs/uikit', '@novnc/novnc'],

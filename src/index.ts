@@ -23,6 +23,7 @@ import { AdaptiveResolutionSystem, configureQuality, quality } from './quality.j
 import { Launcher, LauncherPlacementSystem, type LauncherTile } from './launcher.js';
 import { AmbientMusic } from './music.js';
 import { sfx, SfxListenerSystem } from './sfx.js';
+import { checkForAppUpdate } from './update.js';
 import { connectVm, VMS, type VmId } from './vm.js';
 import { EmulatorMouseSystem } from './xr-mouse.js';
 
@@ -499,6 +500,16 @@ World.create($('scene-container'), {
   });
 
   render();
+  // The Android app can't update itself; offer the new APK when there is one.
+  void checkForAppUpdate().then((update) => {
+    if (!update) return;
+    const banner = $<HTMLDivElement>('update');
+    banner.querySelector('span')!.textContent = `Spatial Desktop ${update.version} is available`;
+    banner.querySelector('a')!.href = update.url;
+    banner.querySelector('button')!.onclick = () => (banner.hidden = true);
+    banner.hidden = false;
+  });
+
   // ?play opens straight into the game (links from the site, captures).
   if (new URLSearchParams(location.search).has('play')) openGame();
 });
