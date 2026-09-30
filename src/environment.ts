@@ -12,6 +12,7 @@ import {
   HemisphereLight,
   IcosahedronGeometry,
   LineSegments,
+  Matrix3,
   Mesh,
   PlaneGeometry,
   Points,
@@ -42,6 +43,16 @@ const MAGENTA = new Color(1.0, 0.35, 0.8);
 
 /** Shared by every animated material, advanced by EnvironmentSystem. */
 const time = { value: 0 };
+
+/**
+ * The distant universe (sky, core, network) as one group, and a colour matrix
+ * over the nebula, so a game can "jump" to another sector by turning and
+ * re-tinting it. Identity by default.
+ */
+export const cosmos = {
+  universe: new Group(),
+  tint: { value: new Matrix3() },
+};
 
 const NOISE = /* glsl */ `
   float hash(vec3 p) {
@@ -129,11 +140,12 @@ function buildSky(renderer: WebGLRenderer, octaves: number, faceSize: number): M
     side: BackSide,
     depthWrite: false,
     defines: { OCTAVES: 1 },
-    uniforms: { uTime: time, uNebula: { value: target.texture } },
+    uniforms: { uTime: time, uNebula: { value: target.texture }, uTint: cosmos.tint },
     vertexShader: direction,
     fragmentShader: /* glsl */ `
       uniform float uTime;
       uniform samplerCube uNebula;
+      uniform mat3 uTint;
       varying vec3 vDir;
       ${NOISE}
 
@@ -153,7 +165,7 @@ function buildSky(renderer: WebGLRenderer, octaves: number, faceSize: number): M
       void main() {
         vec3 d = normalize(vDir);
         float band = exp(-pow(dot(d, normalize(vec3(0.35, 0.9, -0.3))) * 3.0, 2.0));
-        vec3 col = textureCube(uNebula, d).rgb;
+        vec3 col = uTint * textureCube(uNebula, d).rgb;
         col += stars(d, 95.0, 0.982 - 0.01 * band);
         col += stars(d.zxy, 210.0, 0.99 - 0.02 * band) * 0.6;
         gl_FragColor = vec4(col, 1.0);
@@ -519,9 +531,8 @@ function buildPlatform(): Mesh {
 
 export function buildEnvironment(world: World): void {
   const low = quality.tier === 'low';
-  world.scene.add(buildSky(world.renderer, low ? 4 : 6, low ? 512 : 1024));
-  world.scene.add(buildCore(low ? 3 : 4));
-  world.scene.add(buildNetwork(low));
+  cosmos.universe.add(buildSky(world.renderer, low ? 4 : 6, low ? 512 : 1024), buildCore(low ? 3 : 4), buildNetwork(low));
+  world.scene.add(cosmos.universe);
   world.scene.add(buildMotes(low ? 150 : 500));
   world.scene.add(buildPlatform());
   world.scene.add(new HemisphereLight(0xcdd6f4, 0x0b0c14, 1.2));

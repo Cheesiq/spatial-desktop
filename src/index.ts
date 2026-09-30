@@ -2,6 +2,7 @@ import { VisibilityState, World } from '@iwsdk/core';
 import { captureWindow, streamSource } from './capture.js';
 import { detectCapabilities } from './capabilities.js';
 import { buildEnvironment } from './environment.js';
+import { GameSystem } from './game/game.js';
 import { connectHyprland, HYPRLAND_LABEL, searchOnPanel } from './hyprland.js';
 import {
   addPanel,
@@ -16,6 +17,7 @@ import {
   releaseKeyboard,
   removePanel,
   setLayout,
+  setPanelsHidden,
 } from './panels.js';
 import { AdaptiveResolutionSystem, configureQuality, quality } from './quality.js';
 import { Launcher, LauncherPlacementSystem, type LauncherTile } from './launcher.js';
@@ -46,9 +48,11 @@ World.create($('scene-container'), {
   world.registerSystem(AdaptiveResolutionSystem);
   world.registerSystem(LauncherPlacementSystem);
   world.registerSystem(SfxListenerSystem);
+  world.registerSystem(GameSystem);
+  const game = world.getSystem(GameSystem)!;
 
   // Dev-only handle for poking at the scene from DevTools and test scripts.
-  if (import.meta.env.DEV) Object.assign(window, { spatial: { world, desktop, addPanel, streamSource, quality } });
+  if (import.meta.env.DEV) Object.assign(window, { spatial: { world, desktop, addPanel, streamSource, quality, game } });
 
   const list = $<HTMLUListElement>('panels');
   const layoutButton = $<HTMLButtonElement>('layout');
@@ -56,6 +60,7 @@ World.create($('scene-container'), {
   const macosButton = $<HTMLButtonElement>('macos');
   const hyprlandButton = $<HTMLButtonElement>('hyprland');
   const xrButton = $<HTMLButtonElement>('xr');
+  const playButton = $<HTMLButtonElement>('play');
   const status = $<HTMLDivElement>('status');
   const meta = $<HTMLDivElement>('meta');
   const label = (button: HTMLElement, text: string) => {
@@ -72,7 +77,7 @@ World.create($('scene-container'), {
     can.macosVm && 'O macOS',
     can.hyprland && 'D Hyprland',
     can.search && '/ search',
-    'L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar',
+    'G play Rogue Protocol · L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar',
   ].filter(Boolean).join(' · ');
   // Render quality readout and shortcuts, refreshed once a second.
   const showPerf = () => {
@@ -273,6 +278,38 @@ World.create($('scene-container'), {
   $('hide').onclick = () => toggleControls(true);
   $('show').onclick = () => toggleControls(false);
 
+  // ---- Rogue Protocol ----------------------------------------------------------
+  // The game takes the scene: panels, the dock and the control bar step aside,
+  // and the ambient score gives way to the game's own.
+  let launcherWasShown = false;
+  const openGame = () => {
+    if (game.active) return;
+    releaseKeyboard();
+    sfx.play('enter');
+    game.open({
+      audio,
+      sounds: () => sfx.enabled,
+      music: () => musicOn,
+      enter: () => {
+        document.body.classList.add('rp-active');
+        setPanelsHidden(true);
+        launcherWasShown = launcher?.visible ?? false;
+        if (launcher) launcher.visible = false;
+        if (musicOn) music.stop();
+        void audio.resume();
+      },
+      exit: () => {
+        document.body.classList.remove('rp-active');
+        setPanelsHidden(false);
+        if (launcher) launcher.visible = launcherWasShown;
+        if (musicOn) music.start();
+        sfx.play('exit');
+        render();
+      },
+    });
+  };
+  playButton.onclick = openGame;
+
   const cycleLayout = () => {
     setLayout(LAYOUTS[(LAYOUTS.indexOf(desktop.layout) + 1) % LAYOUTS.length]);
     sfx.play('layout');
@@ -284,8 +321,9 @@ World.create($('scene-container'), {
   hyprlandButton.onclick = () => void addHyprland();
   layoutButton.onclick = cycleLayout;
   window.addEventListener('keydown', (event) => {
-    // While the VM has the keyboard, keys belong to it, not to these shortcuts.
-    if (keyboardOwner() || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+    // While the VM has the keyboard, keys belong to it, not to these shortcuts;
+    // while the game is up, they're its controls.
+    if (keyboardOwner() || game.active || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.key === 'n' && can.windowCapture) void add();
     if (event.key === 'v' && can.windowsVm) void addVm('windows');
     if (event.key === 'o' && can.macosVm) void addVm('macos');
@@ -298,6 +336,7 @@ World.create($('scene-container'), {
     if (event.key === 'm') toggleMusic();
     if (event.key === 's') toggleSounds();
     if (event.key === 'h') toggleControls(!hud.classList.contains('collapsed'));
+    if (event.key === 'g') openGame();
   });
 
   const canvas = world.renderer.domElement;
@@ -341,6 +380,7 @@ World.create($('scene-container'), {
     editor: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
     hyprland: 'M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.3L18.7 8 12 11.7 5.3 8 12 4.3zM5 9.7l6 3.4v6.6l-6-3.4V9.7zm8 10v-6.6l6-3.4v6.6l-6 3.4z',
     search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+    play: 'M21.58 16.09l-1.09-7.66A3.996 3.996 0 0 0 16.53 5H7.47C5.48 5 3.79 6.46 3.51 8.43l-1.09 7.66a2.545 2.545 0 0 0 4.33 2.16L9 16h6l2.24 2.24a2.545 2.545 0 0 0 4.34-2.15zM11 11H9v2H8v-2H6v-1h2V8h1v2h2v1zm4-1c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm2 3c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z',
     activity: 'M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z',
   };
   const setAbundance = (value: number) => {
@@ -382,6 +422,7 @@ World.create($('scene-container'), {
     ...(can.hyprland
       ? [{ id: 'hyprland', label: 'Hyprland', icon: ICONS.hyprland, active: () => hyprlandPanel() != null, run: () => void addHyprland() }]
       : []),
+    { id: 'play', label: 'Play', icon: ICONS.play, run: openGame },
     { id: 'layout', label: desktop.layout[0].toUpperCase() + desktop.layout.slice(1), icon: ICONS.layout, run: cycleLayout },
     { id: 'music', label: 'Music', icon: ICONS.music, active: () => musicOn, run: toggleMusic },
     { id: 'sounds', label: 'Sounds', icon: ICONS.sounds, active: () => sfx.enabled, run: toggleSounds },
@@ -434,7 +475,7 @@ World.create($('scene-container'), {
   };
   launcherButton.onclick = toggleLauncher;
   window.addEventListener('keydown', (event) => {
-    if (keyboardOwner() || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (keyboardOwner() || game.active || event.repeat || event.ctrlKey || event.altKey || event.metaKey) return;
     if (event.key === 'a') toggleLauncher();
   });
   if (import.meta.env.DEV) Object.assign(window, { launcher });
@@ -458,4 +499,6 @@ World.create($('scene-container'), {
   });
 
   render();
+  // ?play opens straight into the game (links from the site, captures).
+  if (new URLSearchParams(location.search).has('play')) openGame();
 });

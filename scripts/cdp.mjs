@@ -3,7 +3,8 @@
 export async function connect() {
   const port = process.env.CDP_PORT ?? 9223;
   const targets = await (await fetch(`http://localhost:${port}/json/list`)).json();
-  const page = targets.find((t) => t.type === 'page' && t.url.startsWith('http://localhost:5173'));
+  const origin = process.env.APP_ORIGIN ?? 'http://localhost:5173';
+  const page = targets.find((t) => t.type === 'page' && t.url.startsWith(origin));
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener('open', r, { once: true }));
   let id = 0;
