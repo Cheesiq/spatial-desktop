@@ -6,7 +6,7 @@
 
 Built for [Omarchy](https://omarchy.org) on Hyprland with Meta's [Immersive Web SDK](https://github.com/facebook/immersive-web-sdk). Runs in a browser window on your desktop, and in WebXR.
 
-<img src="docs/images/hero.jpg" alt="Three panels in an arc — a terminal running fastfetch, Hyprland itself, and Neovim — in front of a glowing neural core, with the control bar below" width="100%">
+<a href="https://cheesiq.github.io/spatial-desktop/app/?play"><img src="docs/images/hero-rogue-protocol-play.jpg" alt="Rogue Protocol, the game built into Spatial Desktop: the Overseer and its escort of rogue bots, with a play button. Click to play in your browser" width="100%"></a>
 
 ### [⬇ Download](https://cheesiq.github.io/spatial-desktop/) · [Open in your browser](https://cheesiq.github.io/spatial-desktop/app/) · [Releases](https://github.com/Cheesiq/spatial-desktop/releases)
 
