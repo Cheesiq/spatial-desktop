@@ -99,6 +99,28 @@
         box-shadow: 0 30px 90px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.03), 0 0 120px rgb(140 115 255 / 0.18);
       }
 
+      /* The hero shot is Rogue Protocol, and clicking anywhere on it starts the game. */
+      .play-hero { position: relative; display: block; max-width: 100%; color: #fff; text-decoration: none; }
+      .play-hero img { display: block; width: 100%; height: auto; }
+      .play-button {
+        position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%);
+        width: clamp(72px, 12vw, 150px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+        background: rgb(90 216 255 / 0.92); box-shadow: 0 0 0 10px rgb(90 216 255 / 0.2), 0 0 70px rgb(90 216 255 / 0.75);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+      }
+      .play-button svg { width: 48%; height: 48%; margin-left: 8%; fill: #04111c; }
+      .play-label {
+        position: absolute; left: 50%; top: calc(42% + clamp(52px, 8.5vw, 108px)); transform: translateX(-50%); white-space: nowrap;
+        font-weight: 700; font-size: clamp(0.75rem, 1.6vw, 1.1rem); letter-spacing: 0.28em; text-transform: uppercase; text-shadow: 0 2px 14px #000;
+      }
+      .play-hero:hover .play-button, .play-hero:focus-visible .play-button {
+        transform: translate(-50%, -50%) scale(1.08); background: #fff; box-shadow: 0 0 0 14px rgb(90 216 255 / 0.25), 0 0 100px rgb(90 216 255 / 0.9);
+      }
+      .play-hero:focus-visible { outline: 3px solid var(--cyan); outline-offset: 4px; }
+      @media (prefers-reduced-motion: reduce) { .play-button { transition: none; } }
+      /* Too narrow for the label to clear the key art's logo; the button speaks for itself. */
+      @media (max-width: 560px) { .play-label { display: none; } }
+
       /* ---- sections ---- */
       section { padding: 64px 0; scroll-margin-top: 64px; }
       h2 { font-size: clamp(1.6rem, 3.5vw, 2.3rem); letter-spacing: -0.02em; margin: 0 0 8px; }
@@ -204,8 +226,12 @@
             </a>
           </div>
           <div class="meta" id="meta">Free and open source · <a href="#releases">all releases</a></div>
-          <img class="shot" src="images/hero.jpg" width="1600" height="900"
-               alt="Three panels in an arc — a terminal, Hyprland itself and Neovim — in front of a glowing neural core" />
+          <a class="shot play-hero" href="app/?play" aria-label="Play Rogue Protocol in your browser">
+            <img src="images/hero-rogue-protocol.jpg" width="1600" height="900"
+                 alt="Rogue Protocol: the Overseer and its escort of rogue bots above the platform, two drones exploding" />
+            <span class="play-button" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3.5v17L20.5 12z" /></svg></span>
+            <span class="play-label">Play in your browser</span>
+          </a>
         </div>
       </div>
 
