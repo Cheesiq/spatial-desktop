@@ -42,6 +42,8 @@ export interface HudState {
   /** 2D: whether the mouse is captured (else the title says "click to engage"). */
   locked: boolean;
   touch: boolean;
+  /** A game controller is in use: its buttons in the menus and hints. */
+  pad: boolean;
   autopilot: boolean;
 }
 
@@ -169,7 +171,6 @@ export class ScreenHud {
   private readonly radar = Object.assign(el('canvas', 'rp-radar'), { width: 200, height: 200 });
   private readonly arrows = el('canvas', 'rp-arrows');
   private readonly menu = el('div', 'rp-menu');
-  private readonly novaButton = el('button', 'rp-nova-btn', 'NOVA');
   private menuKey = '';
   private readonly projected = new Vector3();
 
@@ -189,8 +190,7 @@ export class ScreenHud {
     top.append(left, this.wave, this.best);
     this.cross.innerHTML =
       '<svg viewBox="-20 -20 40 40"><circle r="2" /><path d="M-14 0h-6M14 0h6M0 -14v-6M0 14v6" /><path class="hm" d="M-9 -9l-5 -5M9 -9l5 -5M-9 9l-5 5M9 9l5 5" /></svg>';
-    this.novaButton.onclick = () => actions.nova();
-    this.root.append(this.vignette, this.arrows, top, this.boss, this.banner, this.cross, bars, this.radar, this.novaButton, this.menu);
+    this.root.append(this.vignette, this.arrows, top, this.boss, this.banner, this.cross, bars, this.radar, this.menu);
     this.root.hidden = true;
     document.body.append(this.root);
   }
@@ -293,7 +293,7 @@ export class ScreenHud {
   }
 
   private drawMenu(state: HudState): void {
-    const key = `${state.phase}|${state.locked}|${state.touch}|${state.best}|${state.phase === 'over' ? state.score : ''}`;
+    const key = `${state.phase}|${state.locked}|${state.touch}|${state.pad}|${state.best}|${state.phase === 'over' ? state.score : ''}`;
     if (key === this.menuKey) return;
     this.menuKey = key;
     this.menu.hidden = state.phase === 'playing';
@@ -306,8 +306,10 @@ export class ScreenHud {
       };
       return b;
     };
-    const controls = state.touch
-      ? '<div class="rp-keys"><span><b>Drag</b> aim</span><span><b>Hold</b> fire</span><span><b>NOVA</b> clear the sky</span></div>'
+    const controls = state.pad
+      ? '<div class="rp-keys"><span><b>Left stick</b> move</span><span><b>Right stick</b> aim</span><span><b>RT</b> fire</span><span><b>LT</b> shield</span><span><b>RB</b> nova</span><span><b>Start</b> pause</span></div>'
+      : state.touch
+      ? '<div class="rp-keys"><span><b>Left thumb</b> move</span><span><b>Point the phone</b> to look around, <b>drag</b> to turn</span><span><b>FIRE</b> hold, and drag it to aim</span><span><b>SHIELD</b> parry</span><span><b>NOVA</b> clear the sky</span></div>'
       : '<div class="rp-keys"><span><b>Mouse</b> aim</span><span><b>Click</b> fire</span><span><b>Right-click</b> shield</span><span><b>WASD</b> move</span><span><b>Space</b> nova</span><span><b>Esc</b> pause</span></div>';
     const actions = el('div', 'rp-actions');
     if (state.phase === 'title') {
