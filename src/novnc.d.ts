@@ -15,5 +15,7 @@ declare module '@novnc/novnc' {
     blur(): void;
     disconnect(): void;
     sendCtrlAltDel(): void;
+    /** Send one key event: an X11 keysym and a KeyboardEvent.code (for servers that take scancodes). */
+    sendKey(keysym: number, code: string | null, down?: boolean): void;
   }
 }

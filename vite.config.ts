@@ -21,7 +21,8 @@ function spatialServer(): Plugin {
             if (new URL(req.url ?? '/', 'http://x').pathname === path) handler(req, socket, head);
           }),
         log: { warn: (message) => server.config.logger.warn(message), error: (message) => server.config.logger.error(message) },
-        origins: new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]),
+        // The port it really runs on (--port), so a second dev server works too.
+        origins: new Set([`http://localhost:${server.config.server.port ?? PORT}`, `http://127.0.0.1:${server.config.server.port ?? PORT}`]),
       });
       // Vite restarts the server in-process when its config changes; the new
       // instance starts its own wayvnc, and the virtual monitor carries over.
