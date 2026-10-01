@@ -1,6 +1,6 @@
 # The download page and the web version, on GitHub Pages:
-#   https://cheesiq.github.io/spatial-desktop/       download & releases page (site/)
-#   https://cheesiq.github.io/spatial-desktop/app/   Spatial Desktop in the browser
+#   https://spatialdesktop.thng.my/       download & releases page (site/)
+#   https://spatialdesktop.thng.my/app/   Spatial Desktop in the browser
 name: Pages
 
 on:

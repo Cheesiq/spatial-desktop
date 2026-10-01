@@ -32,7 +32,7 @@ function spatialServer(): Plugin {
 
 export default defineConfig({
   // Relative asset URLs, so one build works from any path: the desktop app's
-  // server, the Android app's WebView, and GitHub Pages under /spatial-desktop/app/.
+  // server, the Android app's WebView, and the website under /app/.
   base: './',
   // Emulates a Quest 3 on localhost so the XR session runs on a plain
   // Hyprland desktop; a real headset skips the emulator via its user agent.

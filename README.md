@@ -6,9 +6,9 @@
 
 Built for [Omarchy](https://omarchy.org) on Hyprland with Meta's [Immersive Web SDK](https://github.com/facebook/immersive-web-sdk). Runs in a browser window on your desktop, and in WebXR.
 
-<a href="https://cheesiq.github.io/spatial-desktop/app/?play"><img src="docs/images/hero-rogue-protocol-play.jpg" alt="Rogue Protocol, the game built into Spatial Desktop: the Overseer and its escort of rogue bots, with a play button. Click to play in your browser" width="100%"></a>
+<a href="https://spatialdesktop.thng.my/app/?play"><img src="docs/images/hero-rogue-protocol-play.jpg" alt="Rogue Protocol, the game built into Spatial Desktop: the Overseer and its escort of rogue bots, with a play button. Click to play in your browser" width="100%"></a>
 
-### [⬇ Download](https://cheesiq.github.io/spatial-desktop/) · [Open in your browser](https://cheesiq.github.io/spatial-desktop/app/) · [Releases](https://github.com/Cheesiq/spatial-desktop/releases)
+### [⬇ Download](https://spatialdesktop.thng.my/) · [Open in your browser](https://spatialdesktop.thng.my/app/) · [Releases](https://github.com/Cheesiq/spatial-desktop/releases)
 
 </div>
 
@@ -97,7 +97,7 @@ Everything in the scene is generated in code and animated in shaders. There are 
 
 ## Download
 
-Get it from the **[download page](https://cheesiq.github.io/spatial-desktop/)**, or straight from the [latest release](https://github.com/Cheesiq/spatial-desktop/releases/latest):
+Get it from the **[download page](https://spatialdesktop.thng.my/)**, or straight from the [latest release](https://github.com/Cheesiq/spatial-desktop/releases/latest):
 
 | Platform | Download | Notes |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ Get it from the **[download page](https://cheesiq.github.io/spatial-desktop/)**,
 | **Windows 10/11** | [Installer](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-win-x64-setup.exe) | Not code-signed yet: *More info → Run anyway*. |
 | **macOS 12+** | [Disk image](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-mac-universal.dmg) | Universal. Not notarized yet: *right-click → Open* the first time. |
 | **Android 7+ / Meta Quest** | [APK](https://github.com/Cheesiq/spatial-desktop/releases/latest/download/Spatial-Desktop-android.apk) | Offline app. On Quest, sideload it (it runs as a 2D window). |
-| **Web / VR headsets** | [Open in your browser](https://cheesiq.github.io/spatial-desktop/app/) | Nothing to install. Real VR in the Quest Browser and other WebXR browsers. |
+| **Web / VR headsets** | [Open in your browser](https://spatialdesktop.thng.my/app/) | Nothing to install. Real VR in the Quest Browser and other WebXR browsers. |
 
 Every build contains the whole scene. The desktop features — the Hyprland panel, the Windows VM and launching apps into the scene — need Linux with Hyprland. Everywhere else, the app offers only what the device supports (window panels where the OS allows screen capture, VR where a WebXR headset is available).
 

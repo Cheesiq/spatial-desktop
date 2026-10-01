@@ -4,7 +4,7 @@
   "desktopName": "spatial-desktop.desktop",
   "version": "1.0.0",
   "description": "Your Hyprland desktop, apps and Windows VM as panels in a deep-space neural interface, in WebXR",
-  "homepage": "https://cheesiq.github.io/spatial-desktop/",
+  "homepage": "https://spatialdesktop.thng.my/",
   "repository": {
     "type": "git",
     "url": "https://github.com/Cheesiq/spatial-desktop.git"
