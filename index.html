@@ -32,6 +32,11 @@
         display: flex; flex-direction: column; align-items: center; pointer-events: none;
       }
       #hud > * { pointer-events: auto; }
+      /* Only real controls catch clicks: the column's empty space, the status
+         snackbar and the chip row's gaps pass through to the scene (the
+         on-screen keyboard and the dock sit just above the bar). */
+      #hud-body, #status, #panels, #meta { pointer-events: none; }
+      #hud-body > .app-bar, #update, #panels li { pointer-events: auto; }
       #hud-body { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
       #hud.collapsed #hud-body { display: none; }
 

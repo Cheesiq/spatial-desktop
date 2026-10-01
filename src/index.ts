@@ -20,6 +20,7 @@ import {
   setPanelsHidden,
 } from './panels.js';
 import { AdaptiveResolutionSystem, configureQuality, quality } from './quality.js';
+import { KeyboardPlacementSystem, VirtualKeyboard } from './keyboard.js';
 import { Launcher, LauncherPlacementSystem, type LauncherTile } from './launcher.js';
 import { AmbientMusic } from './music.js';
 import { sfx, SfxListenerSystem } from './sfx.js';
@@ -48,6 +49,7 @@ World.create($('scene-container'), {
   world.registerSystem(EmulatorMouseSystem);
   world.registerSystem(AdaptiveResolutionSystem);
   world.registerSystem(LauncherPlacementSystem);
+  world.registerSystem(KeyboardPlacementSystem);
   world.registerSystem(SfxListenerSystem);
   world.registerSystem(GameSystem);
   const game = world.getSystem(GameSystem)!;
@@ -382,6 +384,7 @@ World.create($('scene-container'), {
     hyprland: 'M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.3L18.7 8 12 11.7 5.3 8 12 4.3zM5 9.7l6 3.4v6.6l-6-3.4V9.7zm8 10v-6.6l6-3.4v6.6l-6 3.4z',
     search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
     play: 'M21.58 16.09l-1.09-7.66A3.996 3.996 0 0 0 16.53 5H7.47C5.48 5 3.79 6.46 3.51 8.43l-1.09 7.66a2.545 2.545 0 0 0 4.33 2.16L9 16h6l2.24 2.24a2.545 2.545 0 0 0 4.34-2.15zM11 11H9v2H8v-2H6v-1h2V8h1v2h2v1zm4-1c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm2 3c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z',
+    keyboard: 'M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z',
     activity: 'M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z',
   };
   const setAbundance = (value: number) => {
@@ -415,6 +418,13 @@ World.create($('scene-container'), {
       say(`${name}: the launcher server isn't reachable`);
     }
   };
+  const keyboard = new VirtualKeyboard(world);
+  /** The dock tile: whether the keyboard pops up for the VMs. */
+  const toggleKeyboard = () => {
+    keyboard.auto = !keyboard.auto;
+    sfx.play(keyboard.auto ? 'on' : 'off');
+    say(keyboard.auto ? 'The on-screen keyboard opens with the Windows and macOS VMs' : 'On-screen keyboard off');
+  };
   let apps: Array<{ id: string; name: string }> = [];
   const controls = (): LauncherTile[] => [
     ...(can.windowCapture ? [{ id: 'add', label: 'Window', icon: ICONS.add, run: () => void add() }] : []),
@@ -425,6 +435,9 @@ World.create($('scene-container'), {
       : []),
     { id: 'play', label: 'Play', icon: ICONS.play, run: openGame },
     { id: 'layout', label: desktop.layout[0].toUpperCase() + desktop.layout.slice(1), icon: ICONS.layout, run: cycleLayout },
+    ...(can.windowsVm || can.macosVm
+      ? [{ id: 'keyboard', label: 'Keyboard', icon: ICONS.keyboard, active: () => keyboard.auto, run: toggleKeyboard }]
+      : []),
     { id: 'music', label: 'Music', icon: ICONS.music, active: () => musicOn, run: toggleMusic },
     { id: 'sounds', label: 'Sounds', icon: ICONS.sounds, active: () => sfx.enabled, run: toggleSounds },
     { id: 'less', label: `p ${music.abundance.toFixed(2)} −`, icon: ICONS.less, run: () => setAbundance(music.abundance - 0.1) },
@@ -453,6 +466,29 @@ World.create($('scene-container'), {
     ].filter((row) => row.tiles.length),
   );
   world.getSystem(LauncherPlacementSystem)!.launcher = launcher;
+
+  // ---- on-screen keyboard for the VMs ------------------------------------------
+  // It takes the dock's place while a VM panel has the keyboard, and gives it back after.
+  const keyboardSystem = world.getSystem(KeyboardPlacementSystem)!;
+  keyboardSystem.attach(keyboard);
+  const vmLabels = new Set<string>(Object.values(VMS).map((vm) => vm.label));
+  keyboardSystem.findTarget = () => {
+    for (const [, record] of desktop.panels) {
+      const input = record.source.input;
+      if (input?.key && vmLabels.has(record.source.label) && input.hasKeyboard()) return { input, label: record.source.label };
+    }
+    return null;
+  };
+  let dockBeforeKeyboard = false;
+  keyboardSystem.onShown = (shown) => {
+    if (shown) {
+      dockBeforeKeyboard = launcher!.visible;
+      launcher!.visible = false;
+    } else if (dockBeforeKeyboard) {
+      launcher!.visible = true;
+    }
+  };
+  if (import.meta.env.DEV) Object.assign(window, { keyboard });
   if (can.launcher) {
     fetch('/api/apps')
       .then((response) => response.json() as Promise<typeof apps>)

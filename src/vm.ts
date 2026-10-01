@@ -24,6 +24,7 @@ export async function connectVm(id: VmId): Promise<PanelSource> {
     focusKeyboard: () => rfb.focus({ preventScroll: true }),
     releaseKeyboard: () => rfb.blur(),
     hasKeyboard: () => document.activeElement === canvas,
+    key: (keysym, code, down) => rfb.sendKey(keysym, code, down),
   };
   return source;
 }

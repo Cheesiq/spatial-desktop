@@ -9,6 +9,8 @@ export interface PanelInput {
   focusKeyboard(): void;
   releaseKeyboard(): void;
   hasKeyboard(): boolean;
+  /** Send a key directly (the on-screen keyboard): an X11 keysym, its KeyboardEvent.code, pressed or released. */
+  key?(keysym: number, code: string, down: boolean): void;
   /**
    * Hand the real mouse and keyboard over at (u, v) instead of forwarding
    * mouse clicks: the source takes the desktop cursor itself. `quad` is where
