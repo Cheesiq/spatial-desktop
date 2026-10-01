@@ -1,6 +1,7 @@
 import { VisibilityState, World } from '@iwsdk/core';
 import { captureWindow, streamSource } from './capture.js';
 import { detectCapabilities } from './capabilities.js';
+import { Dictation } from './dictation.js';
 import { buildEnvironment } from './environment.js';
 import { connectHyprland, HYPRLAND_LABEL, searchOnPanel } from './hyprland.js';
 import {
@@ -72,6 +73,7 @@ World.create($('scene-container'), {
     can.macosVm && 'O macOS',
     can.hyprland && 'D Hyprland',
     can.search && '/ search',
+    can.dictation && 'hold ` dictate to Claude (Shift+` sends)',
     'L layout · M music · S sounds · A launcher · H hide · drag panels by their top bar',
   ].filter(Boolean).join(' · ');
   // Render quality readout and shortcuts, refreshed once a second.
@@ -326,6 +328,108 @@ World.create($('scene-container'), {
     launcher?.redraw();
   });
 
+  // ---- Claude workers and dictation (server/claude.ts) ------------------------
+  let claude: { workers: Array<{ id: number; name: string }>; current: number | null } = { workers: [], current: null };
+  const refreshClaude = async () => {
+    if (!can.claude) return;
+    try {
+      const next = (await (await fetch('/api/claude/workers', { cache: 'no-store' })).json()) as typeof claude;
+      if (JSON.stringify(next) === JSON.stringify(claude)) return;
+      claude = next;
+      launcher?.redraw();
+    } catch {
+      // The server went away; keep what we had.
+    }
+  };
+  // Workers end when Claude Code exits in them, so keep the list current.
+  if (can.claude) setInterval(() => void refreshClaude(), 3000);
+  const workerName = (id: number | null) => claude.workers.find((w) => w.id === id)?.name ?? 'Claude';
+  const claudePost = async (path: string, body: object = {}) => {
+    const response = await fetch(`/api/claude/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const result = (await response.json()) as { error?: string; name?: string };
+    if (!response.ok) throw new Error(result.error ?? response.statusText);
+    return result;
+  };
+  const claudeAction = async (work: () => Promise<void>) => {
+    try {
+      await work();
+    } catch (error) {
+      sfx.play('error');
+      say(`Claude: ${(error as Error).message}`);
+    }
+    await refreshClaude();
+  };
+  const spawnWorker = () =>
+    claudeAction(async () => {
+      const { name } = await claudePost('spawn');
+      say(hyprlandPanel() ? `${name} started on the Hyprland panel` : `${name} started in a terminal`);
+    });
+  const selectWorker = (id: number) =>
+    claudeAction(async () => {
+      await claudePost('select', { id });
+      say(`Dictation goes to ${workerName(id)}`);
+    });
+  const submitWorker = () =>
+    claudeAction(async () => {
+      await claudePost('submit');
+      say(`Sent to ${workerName(claude.current)}`);
+    });
+
+  const dictation = new Dictation();
+  /** Whether the recording in progress presses Enter after its text. */
+  let dictationSubmits = false;
+  const startDictation = async (submit: boolean) => {
+    if (dictation.recording) return;
+    await refreshClaude();
+    if (claude.current == null) {
+      sfx.play('error');
+      return say('Start a Claude worker first (Claude tile in the launcher)');
+    }
+    dictationSubmits = submit;
+    try {
+      await dictation.start();
+      sfx.play('on');
+      say(`Listening → ${workerName(claude.current)}${submit ? ' (sends when done)' : ''}…`);
+    } catch (error) {
+      sfx.play('error');
+      say(`Microphone: ${(error as Error).message}`);
+    }
+    launcher?.redraw();
+  };
+  const finishDictation = async () => {
+    if (!dictation.recording) return;
+    const audio = await dictation.stop();
+    sfx.play('off');
+    launcher?.redraw();
+    if (!audio) return say('Nothing recorded; hold the key while you speak');
+    say('Transcribing…');
+    try {
+      const { text, worker } = await Dictation.send(audio, dictationSubmits);
+      say(text ? `${workerName(worker)} ← “${text}”` : 'No speech heard');
+    } catch (error) {
+      sfx.play('error');
+      say(`Dictation: ${(error as Error).message}`);
+    }
+  };
+  dictation.onLimit = () => void finishDictation();
+  const toggleDictation = () => void (dictation.recording ? finishDictation() : startDictation(false));
+  if (can.dictation) {
+    // Hold ` to talk; with Shift, Enter follows the text.
+    window.addEventListener('keydown', (event) => {
+      if (event.code !== 'Backquote' || keyboardOwner() || event.ctrlKey || event.altKey || event.metaKey) return;
+      event.preventDefault();
+      if (!event.repeat) void startDictation(event.shiftKey);
+    });
+    window.addEventListener('keyup', (event) => event.code === 'Backquote' && void finishDictation());
+    // Letting go of the key outside the window still ends the recording.
+    window.addEventListener('blur', () => void finishDictation());
+  }
+  if (import.meta.env.DEV) Object.assign(window, { dictation });
+
   // ---- 3D launcher dock --------------------------------------------------------
   const ICONS = {
     add: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
@@ -341,6 +445,9 @@ World.create($('scene-container'), {
     editor: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
     hyprland: 'M12 2 3 7v10l9 5 9-5V7l-9-5zm0 2.3L18.7 8 12 11.7 5.3 8 12 4.3zM5 9.7l6 3.4v6.6l-6-3.4V9.7zm8 10v-6.6l6-3.4v6.6l-6 3.4z',
     search: 'M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z',
+    claude: 'M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z',
+    mic: 'M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
+    send: 'M2.01 21 23 12 2.01 3 2 10l15 2-15 2z',
     activity: 'M20.38 8.57l-1.23 1.85a8 8 0 0 1-.22 7.58H5.07A8 8 0 0 1 15.58 6.85l1.85-1.23A10 10 0 0 0 3.35 19a2 2 0 0 0 1.72 1h13.85a2 2 0 0 0 1.74-1 10 10 0 0 0-.27-10.44zm-9.79 6.84a2 2 0 0 0 2.83 0l5.66-8.49-8.49 5.66a2 2 0 0 0 0 2.83z',
   };
   const setAbundance = (value: number) => {
@@ -408,6 +515,29 @@ World.create($('scene-container'), {
           })),
         ],
       },
+      {
+        title: 'Claude',
+        tiles: can.claude
+          ? [
+              { id: 'claude-new', label: 'New worker', icon: ICONS.claude, run: () => void spawnWorker() },
+              // Tap a worker to dictate to it (and reopen its terminal if closed).
+              ...claude.workers.slice(-5).map((worker) => ({
+                id: `claude-${worker.id}`, label: worker.name, icon: ICONS.terminal,
+                active: () => claude.current === worker.id,
+                run: () => void selectWorker(worker.id),
+              })),
+              ...(can.dictation && claude.workers.length
+                ? [
+                    {
+                      id: 'dictate', label: dictation.recording ? 'Stop' : 'Dictate', icon: ICONS.mic,
+                      active: () => dictation.recording, run: toggleDictation,
+                    },
+                    { id: 'claude-send', label: 'Send', icon: ICONS.send, run: () => void submitWorker() },
+                  ]
+                : []),
+            ]
+          : [],
+      },
     ].filter((row) => row.tiles.length),
   );
   world.getSystem(LauncherPlacementSystem)!.launcher = launcher;
@@ -420,6 +550,7 @@ World.create($('scene-container'), {
       })
       .catch(() => launcher?.toast('App list unavailable'));
   }
+  void refreshClaude();
 
   const launcherButton = $<HTMLButtonElement>('launcher');
   const setLauncherShown = (shown: boolean) => {

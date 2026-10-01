@@ -3,6 +3,7 @@ import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { homedir } from 'node:os';
 import { isInstalled, LAUNCHER_APPS } from './apps.js';
+import { attachClaude } from './claude.js';
 import { type Host, reply } from './host.js';
 import { attachHyprland, type HyprlandDesktop, launchOnPanel } from './hyprland.js';
 
@@ -37,6 +38,10 @@ export interface Capabilities {
   windowsVm: boolean;
   macosVm: boolean;
   launcher: boolean;
+  /** Claude Code and tmux, for Claude workers. */
+  claude: boolean;
+  /** voxtype, for dictating into Claude workers. */
+  dictation: boolean;
 }
 
 function capabilities(hyprland: boolean): Capabilities {
@@ -47,6 +52,8 @@ function capabilities(hyprland: boolean): Capabilities {
     windowsVm: existsSync(VMS.windows.credentials),
     macosVm: existsSync(VMS.macos.credentials),
     launcher: LAUNCHER_APPS.some((app) => canRun(app.requires)),
+    claude: canRun('claude') && canRun('tmux'),
+    dictation: canRun('claude') && canRun('tmux') && canRun('voxtype'),
   };
 }
 
@@ -177,13 +184,14 @@ function attachLauncher(host: Host): void {
 
 /**
  * Mount everything the page talks to: capabilities, the app launcher, the
- * VM proxies and the Hyprland panel. Returns the Hyprland panel's
+ * VM proxies, Claude workers and the Hyprland panel. Returns the Hyprland panel's
  * lifecycle (null outside a Hyprland session).
  */
 export function attachFeatures(host: Host): HyprlandDesktop | null {
   const hyprland = attachHyprland(host, canRun);
   host.use('/api/capabilities', (req, res) => reply(res, 200, capabilities(hyprland != null)));
   attachLauncher(host);
+  attachClaude(host, canRun);
   for (const vm of Object.values(VMS)) attachVmProxy(host, vm);
   return hyprland;
 }

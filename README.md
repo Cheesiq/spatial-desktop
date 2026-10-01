@@ -21,6 +21,7 @@ Built for [Omarchy](https://omarchy.org) on Hyprland with Meta's [Immersive Web 
 - **Any window as a panel.** Add windows, regions or whole monitors through Hyprland's screen-share picker.
 - **Your Windows VM, fully controllable.** Omarchy's Windows VM streams in over VNC, with mouse and keyboard passed through.
 - **Arrange your space.** Arc, grid and stack layouts. Drag panels by their frame, and tap one to bring it up close.
+- **Claude workers you can talk to.** Start Claude Code sessions from the dock; each runs in its own terminal (on the Hyprland panel when it's open) and keeps running if you close it. Hold <kbd>`</kbd> and speak to type into the current worker, or <kbd>Shift</kbd>+<kbd>`</kbd> to send it too; in VR use the dock's **Dictate** and **Send** tiles. Speech is transcribed locally by Omarchy's voxtype (`voxtype setup --download` fetches its model once). New workers start in `~/Work`, or `$SPATIAL_CLAUDE_DIR`.
 - **A 3D launcher dock** for controls and apps, usable with the mouse or XR controllers.
 - **A deep-space neural interface** to work in: a nebula sky, a living neural core, a network of firing neurons and a holographic platform.
 - **Ambient generative music and spatial UI sounds**, both optional.

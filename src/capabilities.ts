@@ -12,6 +12,10 @@ export interface Capabilities {
   macosVm: boolean;
   /** Any launcher apps are installed. */
   launcher: boolean;
+  /** Claude workers: Claude Code sessions in terminals. */
+  claude: boolean;
+  /** Dictating into Claude workers (voxtype, and a microphone API). */
+  dictation: boolean;
   /** The browser can capture windows or screens (not in Android's WebView). */
   windowCapture: boolean;
 }
@@ -23,7 +27,7 @@ export interface Capabilities {
  */
 export async function detectCapabilities(): Promise<Capabilities> {
   const windowCapture = typeof navigator.mediaDevices?.getDisplayMedia === 'function';
-  const standalone = { server: false, hyprland: false, search: false, windowsVm: false, macosVm: false, launcher: false, windowCapture };
+  const standalone = { server: false, hyprland: false, search: false, windowsVm: false, macosVm: false, launcher: false, claude: false, dictation: false, windowCapture };
   try {
     const response = await fetch('/api/capabilities', { cache: 'no-store' });
     const found = (await response.json()) as Partial<Capabilities>;
@@ -35,6 +39,8 @@ export async function detectCapabilities(): Promise<Capabilities> {
       windowsVm: found.windowsVm === true,
       macosVm: found.macosVm === true,
       launcher: found.launcher === true,
+      claude: found.claude === true,
+      dictation: found.dictation === true && typeof navigator.mediaDevices?.getUserMedia === 'function',
       windowCapture,
     };
   } catch {

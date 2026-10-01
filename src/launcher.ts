@@ -30,16 +30,19 @@ export interface LauncherRow {
   tiles: LauncherTile[];
 }
 
-// Physical size (metres) and texture resolution (1000 px per metre).
+// Physical size (metres) and texture resolution (1000 px per metre). The
+// height follows the number of rows; two rows make the original 0.46 m dock.
 const WIDTH_M = 1.2;
-const HEIGHT_M = 0.46;
 const PX_PER_M = 1000;
 const W = Math.round(WIDTH_M * PX_PER_M);
-const H = Math.round(HEIGHT_M * PX_PER_M);
 
 const TILE_W = 118;
 const TILE_H = 150;
 const ICON_D = 72;
+const ROW_H = TILE_H + 36;
+const heightFor = (rows: number) => 88 + ROW_H * Math.max(1, rows);
+/** Height in metres of a two-row dock, which its placement was tuned for. */
+export const BASE_HEIGHT_M = heightFor(2) / PX_PER_M;
 
 // Material 3 baseline dark.
 const C = {
@@ -69,7 +72,7 @@ interface HitBox {
 export class Launcher {
   readonly mesh: Mesh;
   readonly entity: Entity;
-  private readonly canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
+  private readonly canvas = Object.assign(document.createElement('canvas'), { width: W, height: heightFor(2) });
   private readonly g = this.canvas.getContext('2d')!;
   private readonly texture = new CanvasTexture(this.canvas);
   private boxes: HitBox[] = [];
@@ -93,11 +96,16 @@ export class Launcher {
       new PlaneGeometry(1, 1),
       new MeshBasicMaterial({ map: this.texture, transparent: true, toneMapped: false }),
     );
-    this.mesh.scale.set(WIDTH_M, HEIGHT_M, 1);
+    this.mesh.scale.set(WIDTH_M, BASE_HEIGHT_M, 1); // Until LauncherPlacementSystem sizes it.
     this.entity = world.createTransformEntity(this.mesh);
     this.entity.addComponent(RayInteractable);
     this.attachPointer();
     this.redraw();
+  }
+
+  /** Full-size height in metres, for the current number of rows. */
+  get height(): number {
+    return this.canvas.height / PX_PER_M;
   }
 
   get visible(): boolean {
@@ -123,6 +131,13 @@ export class Launcher {
   /** Repaint after state the tiles reflect (music on, layout, ...) changes. */
   redraw(): void {
     const { g } = this;
+    const rows = this.rows();
+    const H = heightFor(rows.length);
+    if (this.canvas.height !== H) {
+      // A new size needs a new GPU texture; three.js allocates it on the next upload.
+      this.canvas.height = H;
+      this.texture.dispose();
+    }
     g.clearRect(0, 0, W, H);
     roundRect(g, 0, 0, W, H, 32);
     g.fillStyle = C.surface;
@@ -145,7 +160,7 @@ export class Launcher {
 
     this.boxes = [];
     let y = 70;
-    for (const row of this.rows()) {
+    for (const row of rows) {
       g.textAlign = 'left';
       g.fillStyle = C.onSurfaceVariant;
       g.font = '500 17px Roboto, "Noto Sans", system-ui, sans-serif';
@@ -157,7 +172,7 @@ export class Launcher {
         this.boxes.push({ tile, x, y: y + 20 });
         x += TILE_W;
       }
-      y += TILE_H + 36;
+      y += ROW_H;
     }
     this.texture.needsUpdate = true;
   }
@@ -198,7 +213,7 @@ export class Launcher {
 
   private tileAt(u: number, v: number): LauncherTile | null {
     const px = u * W;
-    const py = v * H;
+    const py = v * this.canvas.height;
     for (const box of this.boxes) {
       if (px >= box.x && px < box.x + TILE_W && py >= box.y && py < box.y + TILE_H) return box.tile;
     }
@@ -273,6 +288,10 @@ export class LauncherPlacementSystem extends createSystem({}) {
     const launcher = this.launcher;
     if (!launcher) return;
     const mesh = launcher.mesh;
+    // Full size in VR. In 2D a taller dock shrinks to the two-row dock's size,
+    // so it stays clear of the panels above and the control bar below.
+    const size = this.renderer.xr.isPresenting ? 1 : Math.min(1, BASE_HEIGHT_M / launcher.height);
+    mesh.scale.set(WIDTH_M * size, launcher.height * size, 1);
     // In VR the head is the viewer; in 2D the head node isn't where the camera
     // is, so face the camera itself.
     if (this.renderer.xr.isPresenting) this.player.head.getWorldPosition(this.head);
