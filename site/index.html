@@ -212,7 +212,8 @@ section { padding-block: var(--section); border-bottom: 1px solid var(--outline)
 .sub { color: var(--muted); font-size: var(--fs-md); max-width: 65ch; }
 
 /* ---------- downloads ---------- */
-.dl-grid { display: grid; gap: var(--s4); grid-template-columns: minmax(0, 1fr); }
+/* align-items: start — opening one card's install steps must not stretch its row neighbours */
+.dl-grid { display: grid; gap: var(--s4); grid-template-columns: minmax(0, 1fr); align-items: start; }
 @media (min-width: 768px) { .dl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 1200px) { .dl-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .card {
@@ -243,7 +244,7 @@ section { padding-block: var(--section); border-bottom: 1px solid var(--outline)
 .file .arrow { width: 18px; height: 18px; fill: var(--muted); }
 @media (hover: hover) { .file:hover { border-color: var(--primary); background: var(--raised-2); color: var(--text); } .file:hover .arrow { fill: var(--primary); } }
 
-details.install { border-top: 1px solid var(--outline); padding-top: var(--s2); margin-top: auto; }
+details.install { border-top: 1px solid var(--outline); padding-top: var(--s2); }
 details.install summary {
   display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 44px; cursor: pointer;
   list-style: none; font-weight: 600; font-size: var(--fs-sm); color: var(--text);
