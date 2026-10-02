@@ -12,7 +12,7 @@ import electronUpdater from 'electron-updater';
 
 const { autoUpdater } = electronUpdater;
 const REPO = 'Cheesiq/spatial-desktop';
-const DOWNLOAD_PAGE = 'https://cheesiq.github.io/spatial-desktop/';
+const DOWNLOAD_PAGE = 'https://spatialdesktop.thng.my/';
 const EVERY = 6 * 60 * 60 * 1000;
 
 /** True when `latest` (e.g. "1.3.0") is a newer version than `current`. */
